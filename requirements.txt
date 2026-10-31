@@ -8,6 +8,7 @@ numpy
 pandas
 pillow
 scikit-learn
+scipy
 matplotlib
 tqdm
 jupyter
