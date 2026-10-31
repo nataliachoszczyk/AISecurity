@@ -256,7 +256,8 @@ def run_experiment(cfg: dict) -> dict:
     masks = target_masks(labels[~is_tune])
     if cfg.get("generated"):
         gen_labels, gen_images = load_set(generated_dir() / "train")
-        assert not gen_labels.base.isin(labels.id[is_tune]).any(), "a generated image uses a tune image as its base"
+        # Data leakage checks: the bases of the generated train set must come only from the train part without tune.
+        assert gen_labels.base.isin(labels.id[~is_tune]).all(), "a generated image uses a tune or val image as its base"
         inputs = np.concatenate([inputs, unet_inputs(resnet, gen_images, cfg, device)])
         masks = np.concatenate([masks, target_masks(gen_labels)])
         del gen_images
@@ -280,6 +281,7 @@ def run_experiment(cfg: dict) -> dict:
     if cfg.get("generated"):
         # The generated val set has patches at all positions. Its report also shows the top and the bottom half.
         lab, img = load_set(generated_dir() / "val")
+        assert not lab.base.isin(labels.id).any(), "a generated val image uses a train image as its base"
         lab["half"] = np.where((lab.y_min + lab.y_max) / 2 < SIZE / 2, "top half", "bottom half")
         sets["gen_val"] = (lab, analyze(resnet, unet, img, cfg, device))
     for name, (lab, cand) in sets.items():

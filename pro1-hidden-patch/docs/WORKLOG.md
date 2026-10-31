@@ -70,3 +70,7 @@
 - Added `tune_ids()` to `src/evaluate.py`. The UNet and the generator use it, so both have the same tune part. It gives the same 450 images as the old UNet code (370 ADV, 43 clean, 37 decoy-only). Thus the old results stay comparable.
 - gen-v3 (job `2026-10-31_09_gen-v3`) is gen-v2 without the 80 bases of the tune part: 820 train bases and 100 val bases. Make the Kaggle dataset from this notebook.
 - `src/unet.py` can now train on the generated set (option `generated`). It also scores the generated val set, with a report for the top and the bottom half. It stops if a generated image uses a tune image as its base.
+- Data leakage checks:
+  - The UNet stops if a base of the generated train set is not in the train part without tune.
+  - The UNet stops if a base of the generated val set is in the train part.
+  - The 10000 task images (train, val and test) have no exact duplicates and no near duplicates (8x8 mean image, 16 levels).
