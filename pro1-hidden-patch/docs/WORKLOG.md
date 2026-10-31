@@ -62,3 +62,7 @@
   - The flipped image with the new decoys must have the class of the upright base after JPEG. Other images are rejected. The log shows the number of rejected images for each reason.
   - The train part stops after 9 hours, so the zip is complete before the Kaggle limit.
   - The output is one zip file (`gen-v2.zip`) for the dataset. Make the dataset one time on the notebook page: Output, then New Dataset.
+- Added two options to `src/unet.py`:
+  - `best_epoch`: keep the weights of the epoch with the lowest tune loss.
+  - `boxes: fit`: the candidates are the rectangles of an allowed size (8-15% of the area, ratio 1:2 to 2:1) with the largest sum of (probability - `fit_offset`). Six come from the patch mask and six from the decoy mask. The old method uses a threshold and connected parts.
+- Job `2026-10-31_08_unet-v4`: unet-v4a (old boxes) and unet-v4b (fitted boxes). Both train with the same seed for 80 epochs and keep the best epoch. Thus the difference of the scores comes only from the box method.

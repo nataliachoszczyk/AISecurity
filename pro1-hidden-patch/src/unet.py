@@ -26,7 +26,7 @@ from scipy.ndimage import find_objects, label
 from .eda import SIZE, load_images, load_model, load_test_ids
 from .evaluate import BOX, eval_set, points_array, score_report
 from .paths import output_dir
-from .saliency import answers_frame, causal_drops, integrated_gradients, margin, smooth
+from .saliency import answers_frame, best_boxes, box_sizes, causal_drops, integrated_gradients, margin, smooth
 
 
 def block(cin: int, cout: int) -> nn.Sequential:
@@ -124,6 +124,7 @@ def train(inputs: np.ndarray, masks: np.ndarray, cfg: dict, device: str, tune: t
     model.losses, model.tune_losses = [], []
     if tune is not None:
         xt, yt = (torch.from_numpy(a).to(device) for a in tune)
+    best_loss, best_state = float("inf"), None
     for epoch in range(cfg["epochs"]):
         order = torch.randperm(len(x), generator=gen)
         total = 0.0
@@ -140,6 +141,13 @@ def train(inputs: np.ndarray, masks: np.ndarray, cfg: dict, device: str, tune: t
         model.tune_losses.append(eval_loss(model, xt, yt, cfg["batch"]) if tune is not None else np.nan)
         if epoch % 10 == 0 or epoch == cfg["epochs"] - 1:
             print(f"epoch {epoch} loss {model.losses[-1]:.4f} tune loss {model.tune_losses[-1]:.4f}", flush=True)
+        if cfg.get("best_epoch") and model.tune_losses[-1] < best_loss:
+            best_loss, model.best_epoch = model.tune_losses[-1], epoch
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+    if best_state is not None:
+        # The tune loss increases after some epochs (overfit), so keep the weights of the best epoch.
+        model.load_state_dict(best_state)
+        print(f"best epoch {model.best_epoch} tune loss {best_loss:.4f}", flush=True)
     return model.eval()
 
 
@@ -173,9 +181,25 @@ def candidate_boxes(probs: np.ndarray, threshold: float, min_area: int, k: int) 
     return boxes, patch_prob
 
 
+def fitted_boxes(probs: np.ndarray, offset: float, k: int) -> tuple[np.ndarray, np.ndarray]:
+    """Return candidate boxes with an allowed size (8-15% of the area, ratio 1:2 to 2:1) and their mean patch probability.
+
+    A box gets the sum of (probability - offset) inside it. k boxes come from the patch mask and k from the decoy mask,
+    so the causal check can also reject a decoy.
+    """
+    sizes = box_sizes(0.08, 0.15, 2.0, 1)
+    p = torch.from_numpy(probs)
+    boxes = torch.cat([best_boxes(p[:, 0] - offset, sizes, k), best_boxes(p[:, 1] - offset, sizes, k)], 1).numpy()
+    patch_prob = np.stack([[probs[i, 0, y0:y1, x0:x1].mean() for x0, y0, x1, y1 in b] for i, b in enumerate(boxes)])
+    return boxes, patch_prob
+
+
 def analyze(resnet, unet, images: np.ndarray, cfg: dict, device: str) -> dict:
     probs = predict_masks(unet, unet_inputs(resnet, images, cfg, device), device)
-    boxes, patch_prob = candidate_boxes(probs, cfg["mask_threshold"], cfg["min_area"], cfg["candidates"])
+    if cfg.get("boxes") == "fit":
+        boxes, patch_prob = fitted_boxes(probs, cfg["fit_offset"], cfg["candidates"])
+    else:
+        boxes, patch_prob = candidate_boxes(probs, cfg["mask_threshold"], cfg["min_area"], cfg["candidates"])
     drops, margins = [], []
     for i in range(0, len(images), cfg["batch_causal"]):
         x = to_tensor(images[i:i + cfg["batch_causal"]], device)
@@ -237,7 +261,7 @@ def run_experiment(cfg: dict) -> dict:
     tune_labels = labels[is_tune].reset_index(drop=True)
     tune_cand = analyze(resnet, unet, images[is_tune], cfg, device)
     params = tune(tune_labels, tune_cand, np.linspace(*cfg["thresholds"]))
-    metrics = {"codename": cfg["codename"], **params}
+    metrics = {"codename": cfg["codename"], **params, "best_epoch": getattr(unet, "best_epoch", None)}
 
     sets = {"tune": (tune_labels, tune_cand)}
     for name in ["val", "val_flip"]:
