@@ -3,13 +3,16 @@
 The bases are the clean and decoy-only images. Their decoys stay, and the new patch does not
 overlap them. The steps follow the description of the task data:
 1. Add 0-2 new decoys (uniform, Gaussian or Rademacher noise).
+   The horizontal flip and the decoys must keep the ResNet-18 class of the upright base after JPEG.
 2. Attack the image inside one random box: PGD (untargeted, targeted), MI-FGSM or C&W.
    A binary search finds the smallest strength that works after JPEG.
 3. Save the image as JPEG and use the decoded image.
 The attacks do not calculate the gradient through JPEG. Thus they need a slightly larger strength.
 """
 import io
+import time
 import json
+import zipfile
 
 import numpy as np
 import pandas as pd
@@ -132,12 +135,13 @@ def attack_search(model, x, mask, c, target, kind: str, quality: np.ndarray) -> 
     return best, found
 
 
-def make_jobs(labels: pd.DataFrame, copies: int, dihedral: bool, rng) -> list[dict]:
-    """Return one job for each new image: base, flip and rotation, patch box, new decoys, attack and JPEG quality."""
+def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng) -> list[dict]:
+    """Return one job for each new image: base, flip, patch box, new decoys, attack and JPEG quality."""
     jobs = []
     for row in labels.itertuples():
         for _ in range(copies):
-            k = int(rng.integers(8)) if dihedral else 0
+            # k = 4 is the horizontal flip. A rotation changes the ResNet-18 class of most images.
+            k = int(rng.choice([0, 4])) if hflip else 0
             old = [_box_of(_rect(d["box"]), k) for d in row.decoys]
             taken = np.zeros((SIZE, SIZE), bool)
             for x0, y0, x1, y1 in old:
@@ -175,33 +179,45 @@ def _box_of(mask: np.ndarray, k: int) -> tuple[int, int, int, int]:
     return int(cols[0]), int(rows[0]), int(cols[-1] + 1), int(rows[-1] + 1)
 
 
-def generate(part: str, copies: int, dihedral: bool, seed: int, batch: int = 512) -> tuple[pd.DataFrame, np.ndarray]:
+def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
+             deadline: float | None = None) -> tuple[pd.DataFrame, np.ndarray]:
     """Return the labels and the uint8 images (N, SIZE, SIZE, 3) of the new attacked images.
 
-    part selects the bases from splits/split.csv: train or val.
+    part selects the bases from splits/split.csv: train or val. After the deadline (time.time()), no new batch starts.
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = load_model().to(device).requires_grad_(False)
+    if torch.cuda.device_count() > 1:
+        model = torch.nn.DataParallel(model)
     rng = np.random.default_rng(seed)
     labels = load_labels().merge(load_split(), on="id")
     bases = labels[(labels.part == part) & labels.kind.isin(["CLEAN", "DECOY"])].reset_index(drop=True)
     base_images = dict(zip(bases.id, load_images("train", bases.id)))
-    jobs = make_jobs(bases, copies, dihedral, rng)
+    jobs = make_jobs(bases, copies, hflip, rng)
+    with torch.no_grad():
+        upright = torch.from_numpy(np.stack(list(base_images.values()))).permute(0, 3, 1, 2).to(device)
+        base_class = dict(zip(base_images, model(upright).argmax(1).tolist()))
 
-    rows, images = [], []
+    rows, images, rejected = [], [], {"class": 0, "attack": 0}
     for start in range(0, len(jobs), batch):
+        if deadline is not None and time.time() > deadline:
+            print(f"{part}: time limit, stop after {start} jobs", flush=True)
+            break
         part_jobs = jobs[start:start + batch]
         x = np.stack([_prepare(base_images[j["base"]], j) for j in part_jobs])
         x = torch.from_numpy(x).permute(0, 3, 1, 2).to(device)
         mask = torch.from_numpy(np.stack([_rect(j["box"]) for j in part_jobs])[:, None].astype(np.float32)).to(device)
+        # The flip and the new decoys must keep the class of the upright base after JPEG.
+        c = torch.tensor([base_class[j["base"]] for j in part_jobs], device=device)
+        quality = np.array([j["jpeg"] for j in part_jobs])
         with torch.no_grad():
-            c = model(x).argmax(1)
+            same = (model(jpeg(x, quality)).argmax(1) == c).cpu().numpy()
+        rejected["class"] += int((~same).sum())
         target = torch.tensor([j["target"] for j in part_jobs], device=device)
         target = torch.where(target == c, (target + 1) % 200, target)
-        quality = np.array([j["jpeg"] for j in part_jobs])
         attacks = np.array([j["attack"] for j in part_jobs])
         for kind in ATTACKS:
-            sel = np.where(attacks == kind)[0]
+            sel = np.where((attacks == kind) & same)[0]
             if len(sel) == 0:
                 continue
             idx = torch.from_numpy(sel).to(device)
@@ -209,22 +225,25 @@ def generate(part: str, copies: int, dihedral: bool, seed: int, batch: int = 512
             adv = (adv.permute(0, 2, 3, 1).cpu().numpy() * 255).round().astype(np.uint8)
             for i, j_idx in enumerate(sel):
                 if found[i] < 0:
+                    rejected["attack"] += 1
                     continue
                 j = part_jobs[j_idx]
                 strength = (CW_CONSTS[found[i]] if kind == "cw_l2_u" else EPS_LEVELS[found[i]] * 255)
-                rows.append({"id": f"gen_{part}_{start + j_idx}", "base": j["base"], "k": j["k"],
+                rows.append({"id": f"gen_{part}_{start + j_idx}", "base": j["base"], "k": j["k"], "base_class": int(c[j_idx]),
                              **dict(zip(BOX, j["box"])), "kind": "ADV", "attack": kind,
                              "strength": float(strength), "jpeg": j["jpeg"],
                              "decoys": [{"box": b} for b in j["old_decoys"]] + [{"box": d["box"]} for d in j["decoys"]]})
                 images.append(adv[i])
-        print(f"{part}: {min(start + batch, len(jobs))}/{len(jobs)} jobs, {len(rows)} images", flush=True)
+        print(f"{part}: {min(start + batch, len(jobs))}/{len(jobs)} jobs, {len(rows)} images, {rejected} rejected", flush=True)
+    if not rows:
+        raise RuntimeError(f"{part}: all {len(jobs)} jobs were rejected")
     out = pd.DataFrame(rows)
     out["n_decoys"] = out.decoys.map(len)
     return out, np.stack(images)
 
 
 def _prepare(image: np.ndarray, job: dict) -> np.ndarray:
-    """Return the base image after the flip and rotation, with the new decoys."""
+    """Return the base image after the flip, with the new decoys."""
     x = np.rot90(image, job["k"] % 4)
     x = x[:, ::-1] if job["k"] >= 4 else x
     x = x.copy()
@@ -253,8 +272,11 @@ def run_generation(cfg: dict) -> None:
 
     out_dir = output_dir() / cfg["codename"]
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Stop the train part in time, so the zip is complete before the Kaggle limit of 12 hours.
+    deadline = time.time() + cfg["hours"] * 3600
     for part in ["val", "train"]:
-        labels, images = generate(part, cfg[f"{part}_copies"], part == "train", cfg["seed"] + (part == "val"), cfg["batch"])
+        labels, images = generate(part, cfg[f"{part}_copies"], cfg["hflip"], cfg["seed"] + (part == "val"), cfg["batch"],
+                                  deadline if part == "train" else None)
         save_set(out_dir / part, labels, images)
         summary = labels.groupby("attack").strength.describe()
         summary.to_csv(out_dir / f"summary_{part}.csv")
@@ -263,6 +285,13 @@ def run_generation(cfg: dict) -> None:
             # The checks run before the long train part, so an error shows early.
             plot_examples(labels, images.astype(np.float32) / 255).savefig(out_dir / "examples.png", dpi=80, bbox_inches="tight")
             score_saliency(labels, images.astype(np.float32) / 255, cfg).to_csv(out_dir / "report_saliency-v1_gen_val.csv", index=False)
+
+    # One zip file for the Kaggle dataset: Output -> New Dataset on the notebook page.
+    with zipfile.ZipFile(output_dir() / f"{cfg['codename']}.zip", "w", zipfile.ZIP_DEFLATED) as z:
+        for part in ["train", "val"]:
+            for ext in ["npy", "csv"]:
+                z.write(out_dir / f"{part}.{ext}", f"{part}.{ext}")
+                (out_dir / f"{part}.{ext}").unlink()
 
 
 def score_saliency(labels: pd.DataFrame, images: np.ndarray, cfg: dict) -> pd.DataFrame:

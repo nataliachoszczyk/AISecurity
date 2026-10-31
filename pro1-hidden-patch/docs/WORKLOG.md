@@ -55,3 +55,10 @@
 - Added `src/generate.py`: it makes new attacked images with the patch at any position. The bases are the clean and decoy-only images. For each base, it adds 0-2 new decoys, attacks one random box and saves the image as JPEG (quality 85-95). A binary search finds the smallest strength that works after JPEG. The attacks do not calculate the gradient through JPEG.
 - The generated train set uses only bases from the train part, with flips and rotations. The generated val set uses only bases from the val part, without flips. Thus the generated val set is the first valid check for patches in the top half.
 - Added the job `2026-10-31_06_gen-v1` (config `2026-10-31_06_gen-v1.yaml`): 16 images for each train base and 8 for each val base. The job also scores saliency-v1 on the generated val set and draws `examples.png`. The images stay on Kaggle: the next jobs use the output of this notebook as input.
+- unet-v3 (200 epochs): val 0.524 (unet-v2 0.508). The tune loss was lowest at epoch 59 (0.774) and then increased to approximately 1.2. The train loss decreased to 0.35. Thus the UNet overfits on 4000 images, and a longer training does not help.
+- A small check of gen-v1 on the CPU: all rotated images changed the ResNet-18 class. Thus a rotation makes a different base, and the attack on it is not like the task data.
+- gen-v2 (job `2026-10-31_07_gen-v2`) is the one large generated set for the Kaggle dataset. Changes from gen-v1:
+  - No rotations. Only the horizontal flip, because ResNet-18 keeps the class of most flipped images.
+  - The flipped image with the new decoys must have the class of the upright base after JPEG. Other images are rejected. The log shows the number of rejected images for each reason.
+  - The train part stops after 9 hours, so the zip is complete before the Kaggle limit.
+  - The output is one zip file (`gen-v2.zip`) for the dataset. Make the dataset one time on the notebook page: Output, then New Dataset.
