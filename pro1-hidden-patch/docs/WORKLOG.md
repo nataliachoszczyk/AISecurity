@@ -111,3 +111,6 @@
 - Decision: send a submission only after a clear improvement on val.
 - Added `estimate_jpeg_quality()` to `src/eda.py`: the quality (50-96) with the smallest change after one more JPEG save. On 40 train images, 95% of the estimates are equal to the label, and all are within 1.
 - Added the job `2026-11-01_14_jpeg-quality` (CPU): the estimate for all train and test images. It checks if the test images have a lower JPEG quality.
+- gen-smoke passed the full flow on the CPU (generation, save, examples, saliency check, zip). It found one problem: the C&W strength was 17-20/255 (task data: median 9.6/255).
+- C&W now uses an Adam step of 0.001 (before 0.01). With the larger step the change reached the 20/255 limit after a few steps, and the L2 term could not make it small.
+- Added `check_strength()`: after the generated val set, the run stops if the median strength of an attack differs from the task data by more than 4/255. Thus a wrong attack does not use 9 hours of GPU.

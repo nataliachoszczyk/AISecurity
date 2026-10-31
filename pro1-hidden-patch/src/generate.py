@@ -99,7 +99,8 @@ def linf_attack(model, x, mask, c, target, eps, kind: str) -> torch.Tensor:
 def cw_attack(model, x, mask, c, const) -> torch.Tensor:
     """C&W L2 (100 steps of Adam) inside the mask. const has one value for each image."""
     delta = torch.zeros_like(x, requires_grad=True)
-    opt = torch.optim.Adam([delta], lr=0.01)
+    # A larger step makes the change reach the 20/255 limit in a few steps. Then the L2 term cannot make it small.
+    opt = torch.optim.Adam([delta], lr=0.001)
     for _ in range(100):
         z = (x + delta * mask).clamp(0, 1)
         f = margin(amp_model(model, z), c).clamp(min=-1.0)
@@ -310,6 +311,7 @@ def run_generation(cfg: dict) -> None:
             # The checks run before the long train part, so an error shows early.
             plot_examples(labels, images.astype(np.float32) / 255).savefig(out_dir / "examples.png", dpi=80, bbox_inches="tight")
             score_saliency(labels, images.astype(np.float32) / 255, cfg).to_csv(out_dir / "report_saliency-v1_gen_val.csv", index=False)
+            check_strength(labels, cfg.get("max_strength_gap", 4.0))
 
     # One zip file for the Kaggle dataset: Output -> New Dataset on the notebook page.
     with zipfile.ZipFile(output_dir() / f"{cfg['codename']}.zip", "w", zipfile.ZIP_DEFLATED) as z:
@@ -317,6 +319,17 @@ def run_generation(cfg: dict) -> None:
             for ext in ["npy", "csv"]:
                 z.write(out_dir / f"{part}.{ext}", f"{part}.{ext}")
                 (out_dir / f"{part}.{ext}").unlink()
+
+
+def check_strength(labels: pd.DataFrame, max_gap: float) -> None:
+    """Stop the run if the median strength of an attack is far from the task data. Then the long train part does not start."""
+    task = load_labels().groupby("attack").strength.median()
+    ours = labels.groupby("attack").strength.median()
+    table = pd.DataFrame({"task": task, "generated": ours, "count": labels.attack.value_counts()})
+    print(table, flush=True)
+    gap = (table.generated - table.task).abs()
+    if (gap > max_gap).any() or table.generated.isna().any():
+        raise RuntimeError(f"the strength of the generated attacks is not like the task data:\n{table}")
 
 
 def score_saliency(labels: pd.DataFrame, images: np.ndarray, cfg: dict) -> pd.DataFrame:
@@ -334,6 +347,8 @@ def score_saliency(labels: pd.DataFrame, images: np.ndarray, cfg: dict) -> pd.Da
 def plot_examples(labels: pd.DataFrame, images: np.ndarray, bases: int = 4, per_base: int = 3):
     """For some bases: the original image, then generated images and their residuals with the true boxes."""
     fig, axes = plt.subplots(bases, 1 + 2 * per_base, figsize=(2.2 * (1 + 2 * per_base), 2.4 * bases))
+    for ax in axes.flat:
+        ax.axis("off")
     for row_axes, base in zip(axes, labels.base.drop_duplicates()[:bases]):
         row_axes[0].imshow(load_image("train", base))
         row_axes[0].set_title(f"original\n{base}", fontsize=7)
