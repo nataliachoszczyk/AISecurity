@@ -96,7 +96,23 @@ def unet_inputs(resnet, images: np.ndarray, cfg: dict, device: str) -> np.ndarra
     return np.concatenate(parts)
 
 
-def train(inputs: np.ndarray, masks: np.ndarray, cfg: dict, device: str) -> UNet:
+def mask_loss(logits: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """Return BCE plus Dice loss."""
+    p = torch.sigmoid(logits)
+    dice = 1 - (2 * (p * y).sum((2, 3)) + 1) / (p.sum((2, 3)) + y.sum((2, 3)) + 1)
+    return F.binary_cross_entropy_with_logits(logits, y) + dice.mean()
+
+
+@torch.no_grad()
+def eval_loss(model: UNet, x: torch.Tensor, y: torch.Tensor, batch: int) -> float:
+    model.eval()
+    total = sum(mask_loss(model(xb), yb).item() * len(xb) for xb, yb in zip(x.split(batch), y.split(batch)))
+    model.train()
+    return total / len(x)
+
+
+def train(inputs: np.ndarray, masks: np.ndarray, cfg: dict, device: str, tune: tuple | None = None) -> UNet:
+    """Train the UNet. With tune = (inputs, masks), also record the loss on the tune part after each epoch."""
     torch.manual_seed(cfg["seed"])
     x, y = torch.from_numpy(inputs).to(device), torch.from_numpy(masks).to(device)
     model = UNet(cfg["width"], inputs.shape[1] - 3).to(device)
@@ -105,25 +121,25 @@ def train(inputs: np.ndarray, masks: np.ndarray, cfg: dict, device: str) -> UNet
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, cfg["lr"], total_steps=cfg["epochs"] * steps_per_epoch)
     gen = torch.Generator().manual_seed(cfg["seed"])
     model.train()
-    model.losses = []
+    model.losses, model.tune_losses = [], []
+    if tune is not None:
+        xt, yt = (torch.from_numpy(a).to(device) for a in tune)
     for epoch in range(cfg["epochs"]):
         order = torch.randperm(len(x), generator=gen)
         total = 0.0
         for idx in order.split(cfg["batch"]):
             k = int(torch.randint(8, (1,), generator=gen))
             xb, yb = dihedral(x[idx], k), dihedral(y[idx], k)
-            logits = model(xb)
-            p = torch.sigmoid(logits)
-            dice = 1 - (2 * (p * yb).sum((2, 3)) + 1) / (p.sum((2, 3)) + yb.sum((2, 3)) + 1)
-            loss = F.binary_cross_entropy_with_logits(logits, yb) + dice.mean()
+            loss = mask_loss(model(xb), yb)
             opt.zero_grad()
             loss.backward()
             opt.step()
             sched.step()
             total += loss.item() * len(idx)
         model.losses.append(total / len(x))
+        model.tune_losses.append(eval_loss(model, xt, yt, cfg["batch"]) if tune is not None else np.nan)
         if epoch % 10 == 0 or epoch == cfg["epochs"] - 1:
-            print(f"epoch {epoch} loss {total / len(x):.4f}", flush=True)
+            print(f"epoch {epoch} loss {model.losses[-1]:.4f} tune loss {model.tune_losses[-1]:.4f}", flush=True)
     return model.eval()
 
 
@@ -212,9 +228,11 @@ def run_experiment(cfg: dict) -> dict:
     labels, images = eval_set("train")
     is_tune = labels.index.isin(labels.sample(frac=cfg["tune_fraction"], random_state=cfg["seed"]).index)
     inputs = unet_inputs(resnet, images[~is_tune], cfg, device)
-    unet = train(inputs, target_masks(labels[~is_tune]), cfg, device)
+    tune_data = (unet_inputs(resnet, images[is_tune], cfg, device), target_masks(labels[is_tune]))
+    unet = train(inputs, target_masks(labels[~is_tune]), cfg, device, tune_data)
     torch.save(unet.state_dict(), out_dir / "unet.pt")
-    pd.DataFrame({"epoch": range(len(unet.losses)), "loss": unet.losses}).to_csv(out_dir / "train_log.csv", index=False)
+    pd.DataFrame({"epoch": range(len(unet.losses)), "loss": unet.losses, "tune_loss": unet.tune_losses}).to_csv(
+        out_dir / "train_log.csv", index=False)
 
     tune_labels = labels[is_tune].reset_index(drop=True)
     tune_cand = analyze(resnet, unet, images[is_tune], cfg, device)

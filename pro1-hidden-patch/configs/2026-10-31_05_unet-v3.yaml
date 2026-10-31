@@ -1,0 +1,16 @@
+# unet-v2 with 200 epochs. The unet-v2 loss still decreased at epoch 60.
+seed: 0
+tune_fraction: 0.1
+width: 32
+use_ig: true
+ig_steps: 8
+epochs: 200
+batch: 64
+lr: 0.002
+weight_decay: 0.0001
+mask_threshold: 0.5
+min_area: 30
+candidates: 6
+batch_causal: 250
+chunk: 1500
+thresholds: [0.0, 3.0, 61]

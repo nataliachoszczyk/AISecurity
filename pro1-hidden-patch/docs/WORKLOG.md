@@ -33,7 +33,7 @@
 - The best method is saliency-v1 (val 0.530). The file `submission_saliency-v1.csv` is ready, but nobody sent it to the leaderboard yet. Git does not keep it. Download it from the output of the Kaggle notebook `bumas-p1-saliency`, or run the job again.
 - Detection (patch or no patch) is good in all methods. The unet-v2 detection is almost perfect (clean 1.00, decoy-only 0.98).
 - The box is the weak part. MI-FGSM patches get the lowest points in all methods (0.21-0.32).
-- The UNet loss still decreased at epoch 60 (`kaggle-jobs/2026-10-31_03_unet/unet-v*/train_log.txt`). Thus the training was too short.
+- The UNet loss still decreased at epoch 60 (`kaggle-jobs/2026-10-31_0[34]_unet-v[12]/unet-v*/train_log.txt`). Thus the training was too short.
 - val_flip is not valid (see above). At this time we have no valid check for patches in the top half. The UNet is equal for top and bottom by design (8 flips and rotations in training and prediction). The saliency method has no training.
 
 ### Next steps
@@ -42,3 +42,11 @@
 2. Combine the methods: detection from unet-v2, box from the best of the saliency and UNet candidates.
 3. Generate attacks with ResNet-18 (PGD, MI-FGSM, C&W, with a mask and JPEG) on clean and decoy-only images. Use bases from the train part for training data. Use bases from the val part for a valid val set with patches in the top half and in the middle.
 4. Decide if the submission file must also go out of the git history (commit 9776e14). This needs a force push.
+
+## 2026-10-31 (unet-v3)
+
+- Renamed the configs to `configs/YYYY-MM-DD_NN_<codename>.yaml`. The date and NN are the same as in the name of the job folder, so the files show the order of the runs. `load_config` finds the file from the codename.
+- Split the job folder `2026-10-31_03_unet` into `2026-10-31_03_unet-v1` and `2026-10-31_04_unet-v2`. The two runs were different versions of one Kaggle notebook, but they are different experiments. Each experiment now has its own number.
+- `src/unet.py` now calculates the loss on the tune part after each epoch. `train_log.csv` has the new column `tune_loss`. If the tune loss increases while the train loss decreases, the UNet overfits.
+- Added unet-v3: the same as unet-v2, but with 200 epochs (unet-v2 had 60).
+- Added the job `2026-10-31_05_unet-v3`. From now on, the jobs run on the Kaggle account `jankombajn`. The script stops at once if the kernel has no GPU.
