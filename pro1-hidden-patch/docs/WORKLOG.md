@@ -74,3 +74,9 @@
   - The UNet stops if a base of the generated train set is not in the train part without tune.
   - The UNet stops if a base of the generated val set is in the train part.
   - The 10000 task images (train, val and test) have no exact duplicates and no near duplicates (8x8 mean image, 16 levels).
+
+## 2026-11-01
+
+- gen-v3 printed no progress after 14 minutes, because its first batch has 2000 images. The live log works: `kaggle kernels logs -f <kernel id>`.
+- The generator now prints the time of each attack in each batch.
+- Added the job `2026-11-01_10_gen-speed`: one batch of 300 images, to estimate the run time of gen-v3.

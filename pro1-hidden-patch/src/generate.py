@@ -224,7 +224,9 @@ def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
             if len(sel) == 0:
                 continue
             idx = torch.from_numpy(sel).to(device)
+            t0 = time.time()
             adv, found = attack_search(model, x[idx], mask[idx], c[idx], target[idx], kind, quality[sel])
+            print(f"  {kind}: {len(sel)} images in {time.time() - t0:.0f} s, {int((found >= 0).sum())} work", flush=True)
             adv = (adv.permute(0, 2, 3, 1).cpu().numpy() * 255).round().astype(np.uint8)
             for i, j_idx in enumerate(sel):
                 if found[i] < 0:
