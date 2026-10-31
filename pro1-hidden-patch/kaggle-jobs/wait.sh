@@ -3,6 +3,7 @@
 # Usage: bash wait.sh <owner/kernel-slug> "<job name in the JOBS.md row>"
 DIR="$(dirname "$0")"
 KAGGLE="$DIR/../../.venv/Scripts/kaggle"
+[ -x "$KAGGLE" ] || [ -x "$KAGGLE.exe" ] || KAGGLE="$DIR/../../.venv/bin/kaggle"  # Linux and macOS
 last=""
 while true; do
   raw=$("$KAGGLE" kernels status "$1" 2>&1)

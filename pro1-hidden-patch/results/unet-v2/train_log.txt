@@ -1,0 +1,7 @@
+epoch 0 loss 1.4937
+epoch 10 loss 0.9087
+epoch 20 loss 0.7715
+epoch 30 loss 0.7059
+epoch 40 loss 0.6704
+epoch 50 loss 0.6340
+epoch 59 loss 0.6137

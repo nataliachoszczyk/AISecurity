@@ -105,6 +105,7 @@ def train(inputs: np.ndarray, masks: np.ndarray, cfg: dict, device: str) -> UNet
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, cfg["lr"], total_steps=cfg["epochs"] * steps_per_epoch)
     gen = torch.Generator().manual_seed(cfg["seed"])
     model.train()
+    model.losses = []
     for epoch in range(cfg["epochs"]):
         order = torch.randperm(len(x), generator=gen)
         total = 0.0
@@ -120,6 +121,7 @@ def train(inputs: np.ndarray, masks: np.ndarray, cfg: dict, device: str) -> UNet
             opt.step()
             sched.step()
             total += loss.item() * len(idx)
+        model.losses.append(total / len(x))
         if epoch % 10 == 0 or epoch == cfg["epochs"] - 1:
             print(f"epoch {epoch} loss {total / len(x):.4f}", flush=True)
     return model.eval()
@@ -212,6 +214,7 @@ def run_experiment(cfg: dict) -> dict:
     inputs = unet_inputs(resnet, images[~is_tune], cfg, device)
     unet = train(inputs, target_masks(labels[~is_tune]), cfg, device)
     torch.save(unet.state_dict(), out_dir / "unet.pt")
+    pd.DataFrame({"epoch": range(len(unet.losses)), "loss": unet.losses}).to_csv(out_dir / "train_log.csv", index=False)
 
     tune_labels = labels[is_tune].reset_index(drop=True)
     tune_cand = analyze(resnet, unet, images[is_tune], cfg, device)

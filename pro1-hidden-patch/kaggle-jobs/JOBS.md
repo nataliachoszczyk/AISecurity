@@ -1,6 +1,14 @@
 # Kaggle jobs
 
-Each job has a folder `YYYY-MM-DD_NN_<name>` with `run.py` and `kernel-metadata.json`. NN gives the order on one day. After the job unet v2, each experiment has its own Kaggle notebook with the name of the experiment, so the link always shows the correct run. The Kaggle API does not give the version ID. All jobs use the dataset `jankombajn/bumas-p1-hidden-patch`. `wait.sh` waits until a job stops.
+## How to run a job
+
+1. Make a new folder `kaggle-jobs/YYYY-MM-DD_NN_<codename>` (NN gives the order on one day) with `run.py` and `kernel-metadata.json`. Copy them from the last job.
+2. Use one Kaggle notebook for each experiment: the kernel id is `<kaggle user>/bumas-p1-<codename>`. Then the link always shows the correct run. The Kaggle API does not give the version ID.
+3. On a different Kaggle account, change the user in the kernel id. The account needs phone verification (for GPU and internet) and access to the dataset `jankombajn/bumas-p1-hidden-patch`. Do not upload copies of the data.
+4. Settings in `kernel-metadata.json`: `"machine_shape": "NvidiaTeslaT4"` (2x T4), `"enable_internet": true`. The script clones the branch `pro1`, so push the code first.
+5. First run on a new account: run the smoke test (`2026-10-31_01_smoke`).
+6. Push with `kaggle kernels push -p <folder>`. Then run `bash kaggle-jobs/wait.sh <kernel id> "<job name>"`. It writes each status change into the table below.
+7. Download only small outputs (`kaggle kernels output ... --file-pattern`). Put `metrics.json`, the reports and the train loss into `results/<codename>/`. Do not commit submission files: the repository is public.
 
 Status values: to run, waiting for another job, queued, running, complete, failed, cancelled.
 
