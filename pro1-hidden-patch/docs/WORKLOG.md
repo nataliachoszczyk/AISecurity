@@ -100,3 +100,9 @@
   - unet-v4b by attack: C&W 0.578, MI-FGSM 0.399, PGD targeted 0.602, PGD untargeted 0.515, clean 0.96, decoy-only 0.98.
   - The two runs had the same seed, but different best epochs. Thus the GPU training is not fully deterministic.
 - The submission of unet-v4b has 27% of 0,0,0,0 answers (20% expected). 51% of the boxes are in the top half.
+- unet-v4b on the leaderboard: 0.5590 (val 0.613). saliency-v1 had no such gap (val 0.530, leaderboard 0.5373).
+- A comparison of the two test submissions:
+  - In 20.0% of the test images, both methods answer 0,0,0,0. This is the share of images without a patch.
+  - In 7.0%, only unet-v4b answers 0,0,0,0, and saliency-v1 gives a box. These are probably patch images where the UNet masks are weak.
+- Made `submission_unet-v4b-saliency.csv`: unet-v4b, but the saliency-v1 box where only unet-v4b answers 0,0,0,0 (349 images, 20.0% of 0,0,0,0 answers).
+- Added the option `ig_candidates` to `src/unet.py`: more candidate boxes from the integrated gradients map. Job `2026-11-01_13_unet-v5`: unet-v4b with 24 of these candidates.

@@ -196,11 +196,18 @@ def fitted_boxes(probs: np.ndarray, offset: float, k: int) -> tuple[np.ndarray, 
 
 
 def analyze(resnet, unet, images: np.ndarray, cfg: dict, device: str) -> dict:
-    probs = predict_masks(unet, unet_inputs(resnet, images, cfg, device), device)
+    inputs = unet_inputs(resnet, images, cfg, device)
+    probs = predict_masks(unet, inputs, device)
     if cfg.get("boxes") == "fit":
         boxes, patch_prob = fitted_boxes(probs, cfg["fit_offset"], cfg["candidates"])
     else:
         boxes, patch_prob = candidate_boxes(probs, cfg["mask_threshold"], cfg["min_area"], cfg["candidates"])
+    if cfg.get("ig_candidates"):
+        # On hard test images the UNet masks are weak. The boxes of saliency.py from the integrated gradients map
+        # give the causal check more chances to find the patch.
+        ig_boxes = best_boxes(torch.from_numpy(inputs[:, 3]), box_sizes(0.08, 0.15, 2.0, 1), cfg["ig_candidates"]).numpy()
+        ig_prob = np.stack([[probs[i, 0, y0:y1, x0:x1].mean() for x0, y0, x1, y1 in b] for i, b in enumerate(ig_boxes)])
+        boxes, patch_prob = np.concatenate([boxes, ig_boxes], 1), np.concatenate([patch_prob, ig_prob], 1)
     drops, margins = [], []
     for i in range(0, len(images), cfg["batch_causal"]):
         x = to_tensor(images[i:i + cfg["batch_causal"]], device)
