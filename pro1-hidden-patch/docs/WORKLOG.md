@@ -25,7 +25,7 @@
 - unet-v1 (image and residual only): val 0.350, mask IoU 0.21. The UNet does not find the weak noise well from 4000 images.
 - unet-v2 (with the integrated gradients map as input): val 0.508, mask IoU 0.33. Detection is almost perfect (clean 1.00, decoy-only 0.98), but the boxes are worse than in saliency-v1 (0.530).
 - Changed `kaggle-jobs/wait.sh`: it writes each status change of a job into `JOBS.md`.
-- Added `results/<codename>/` with the small outputs of each Kaggle run: `metrics.json`, `report_*.csv` and the train loss. Submission files stay out of git, because the repository is public.
+- Added the small outputs of each Kaggle run to `kaggle-jobs/<job folder>/<codename>/`: `metrics.json`, `report_*.csv` and the train loss. Submission files stay out of git, because the repository is public.
 - `src/unet.py` now writes the loss of each epoch to `train_log.csv`.
 
 ### Conclusions on 2026-10-31
@@ -33,7 +33,7 @@
 - The best method is saliency-v1 (val 0.530). The file `submission_saliency-v1.csv` is ready, but nobody sent it to the leaderboard yet. Git does not keep it. Download it from the output of the Kaggle notebook `bumas-p1-saliency`, or run the job again.
 - Detection (patch or no patch) is good in all methods. The unet-v2 detection is almost perfect (clean 1.00, decoy-only 0.98).
 - The box is the weak part. MI-FGSM patches get the lowest points in all methods (0.21-0.32).
-- The UNet loss still decreased at epoch 60 (`results/unet-v*/train_log.txt`). Thus the training was too short.
+- The UNet loss still decreased at epoch 60 (`kaggle-jobs/2026-10-31_03_unet/unet-v*/train_log.txt`). Thus the training was too short.
 - val_flip is not valid (see above). At this time we have no valid check for patches in the top half. The UNet is equal for top and bottom by design (8 flips and rotations in training and prediction). The saliency method has no training.
 
 ### Next steps
