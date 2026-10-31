@@ -91,6 +91,16 @@ def load_split() -> pd.DataFrame:
     return pd.read_csv(SPLIT_FILE)
 
 
+def tune_ids(fraction: float, seed: int) -> set:
+    """Return the ids of the tune part: a seeded sample of the train part.
+
+    The UNet tunes its parameters on these images. The generator does not use them as bases.
+    """
+    labels = load_labels().merge(load_split(), on="id")
+    labels = labels[labels.part == "train"].reset_index(drop=True)
+    return set(labels.sample(frac=fraction, random_state=seed).id)
+
+
 def flip_boxes(df: pd.DataFrame) -> pd.DataFrame:
     """Return the boxes after a vertical flip of the image. The box 0,0,0,0 does not change."""
     out = df.copy()

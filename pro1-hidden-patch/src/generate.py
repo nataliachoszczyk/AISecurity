@@ -1,6 +1,6 @@
 """Generate attacked images like the task data, but with the patch at any position.
 
-The bases are the clean and decoy-only images. Their decoys stay, and the new patch does not
+The bases are the clean and decoy-only images, without the tune part of the UNet. Their decoys stay, and the new patch does not
 overlap them. The steps follow the description of the task data:
 1. Add 0-2 new decoys (uniform, Gaussian or Rademacher noise).
    The horizontal flip and the decoys must keep the ResNet-18 class of the upright base after JPEG.
@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 
 from .eda import DECOY_COLOR, PATCH_COLOR, SIZE, _draw_box, load_image, load_images, load_labels, load_model, residual_view
 from .config import load_config
-from .evaluate import BOX, load_split, score_report
+from .evaluate import BOX, load_split, score_report, tune_ids
 from .paths import output_dir
 from .saliency import analyze, answers_frame, choose, margin
 
@@ -180,10 +180,11 @@ def _box_of(mask: np.ndarray, k: int) -> tuple[int, int, int, int]:
 
 
 def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
-             deadline: float | None = None) -> tuple[pd.DataFrame, np.ndarray]:
+             deadline: float | None = None, exclude: set = frozenset()) -> tuple[pd.DataFrame, np.ndarray]:
     """Return the labels and the uint8 images (N, SIZE, SIZE, 3) of the new attacked images.
 
-    part selects the bases from splits/split.csv: train or val. After the deadline (time.time()), no new batch starts.
+    part selects the bases from splits/split.csv: train or val. exclude has ids that are not bases.
+    After the deadline (time.time()), no new batch starts.
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = load_model().to(device).requires_grad_(False)
@@ -191,7 +192,9 @@ def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
         model = torch.nn.DataParallel(model)
     rng = np.random.default_rng(seed)
     labels = load_labels().merge(load_split(), on="id")
-    bases = labels[(labels.part == part) & labels.kind.isin(["CLEAN", "DECOY"])].reset_index(drop=True)
+    bases = labels[(labels.part == part) & labels.kind.isin(["CLEAN", "DECOY"]) & ~labels.id.isin(exclude)]
+    bases = bases.reset_index(drop=True)
+    print(f"{part}: {len(bases)} bases", flush=True)
     base_images = dict(zip(bases.id, load_images("train", bases.id)))
     jobs = make_jobs(bases, copies, hflip, rng)
     with torch.no_grad():
@@ -276,7 +279,7 @@ def run_generation(cfg: dict) -> None:
     deadline = time.time() + cfg["hours"] * 3600
     for part in ["val", "train"]:
         labels, images = generate(part, cfg[f"{part}_copies"], cfg["hflip"], cfg["seed"] + (part == "val"), cfg["batch"],
-                                  deadline if part == "train" else None)
+                                  deadline if part == "train" else None, tune_ids(cfg["tune_fraction"], cfg["tune_seed"]))
         save_set(out_dir / part, labels, images)
         summary = labels.groupby("attack").strength.describe()
         summary.to_csv(out_dir / f"summary_{part}.csv")

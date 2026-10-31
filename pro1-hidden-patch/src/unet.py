@@ -24,8 +24,9 @@ import torch.nn.functional as F
 from scipy.ndimage import find_objects, label
 
 from .eda import SIZE, load_images, load_model, load_test_ids
-from .evaluate import BOX, eval_set, points_array, score_report
-from .paths import output_dir
+from .evaluate import BOX, eval_set, points_array, score_report, tune_ids
+from .generate import load_set
+from .paths import generated_dir, output_dir
 from .saliency import answers_frame, best_boxes, box_sizes, causal_drops, integrated_gradients, margin, smooth
 
 
@@ -250,10 +251,19 @@ def run_experiment(cfg: dict) -> dict:
 
     resnet = load_model().to(device).requires_grad_(False)
     labels, images = eval_set("train")
-    is_tune = labels.index.isin(labels.sample(frac=cfg["tune_fraction"], random_state=cfg["seed"]).index)
+    is_tune = labels.id.isin(tune_ids(cfg["tune_fraction"], cfg["seed"])).to_numpy()
     inputs = unet_inputs(resnet, images[~is_tune], cfg, device)
+    masks = target_masks(labels[~is_tune])
+    if cfg.get("generated"):
+        gen_labels, gen_images = load_set(generated_dir() / "train")
+        assert not gen_labels.base.isin(labels.id[is_tune]).any(), "a generated image uses a tune image as its base"
+        inputs = np.concatenate([inputs, unet_inputs(resnet, gen_images, cfg, device)])
+        masks = np.concatenate([masks, target_masks(gen_labels)])
+        del gen_images
+        print(f"train images: {len(inputs)} ({len(gen_labels)} generated)", flush=True)
     tune_data = (unet_inputs(resnet, images[is_tune], cfg, device), target_masks(labels[is_tune]))
-    unet = train(inputs, target_masks(labels[~is_tune]), cfg, device, tune_data)
+    unet = train(inputs, masks, cfg, device, tune_data)
+    del inputs, masks
     torch.save(unet.state_dict(), out_dir / "unet.pt")
     pd.DataFrame({"epoch": range(len(unet.losses)), "loss": unet.losses, "tune_loss": unet.tune_losses}).to_csv(
         out_dir / "train_log.csv", index=False)
@@ -267,9 +277,16 @@ def run_experiment(cfg: dict) -> dict:
     for name in ["val", "val_flip"]:
         lab, img = eval_set(name)
         sets[name] = (lab, analyze(resnet, unet, img, cfg, device))
+    if cfg.get("generated"):
+        # The generated val set has patches at all positions. Its report also shows the top and the bottom half.
+        lab, img = load_set(generated_dir() / "val")
+        lab["half"] = np.where((lab.y_min + lab.y_max) / 2 < SIZE / 2, "top half", "bottom half")
+        sets["gen_val"] = (lab, analyze(resnet, unet, img, cfg, device))
     for name, (lab, cand) in sets.items():
         answers = answers_frame(lab.id, choose(cand, params["rule"], params["threshold"]))
         report = score_report(lab, answers)
+        if "half" in lab:
+            report = pd.concat([report, score_report(lab.assign(attack=lab.half), answers).iloc[1:]])
         report.to_csv(out_dir / f"report_{name}.csv", index=False)
         metrics[name] = float(report.points.iloc[0])
         metrics[f"mask_iou_{name}"] = mask_iou(cand["probs"], target_masks(lab))
