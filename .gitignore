@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Data and model weights are on Kaggle, not in git
+**/data/*
+!**/data/.gitkeep
+*.pt
+*.pth
+*.ckpt
+*.zip
+
+# Local tools
+CLAUDE.local.md
+.claude/settings.local.json
+kaggle.json
+.vscode/
+.idea/
+
+# OS files
+*:Zone.Identifier
+.DS_Store

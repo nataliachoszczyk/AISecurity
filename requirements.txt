@@ -1,0 +1,14 @@
+# The local machines have no GPU. The CPU index keeps the torch install small.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch
+torchvision
+torchattacks
+numpy
+pandas
+pillow
+scikit-learn
+matplotlib
+tqdm
+jupyter
+kaggle
