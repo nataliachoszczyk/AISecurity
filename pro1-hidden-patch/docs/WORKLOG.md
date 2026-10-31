@@ -122,3 +122,5 @@
 - The reports of the generated val set now also show the JPEG quality bands 80-89 and 90-95.
 - gen-speed: DataParallel on 2 GPUs is slower than 1 GPU (fp16: 1.73 ms against 0.93 ms for each image step). fp16 is approximately 3.6 times faster than fp32 (0.93 ms against 3.37 ms), with the same success after JPEG.
 - The generator now runs one process on each GPU (`_generate_shard`), each with every second job. The two parts are joined at the end.
+- unet-v5 (unet-v4b plus 24 candidates from the integrated gradients map): val 0.592 (unet-v4b 0.613). Clean images: 0.86 (unet-v4b 0.96). The extra candidates give boxes on clean images. Thus this idea does not help.
+- unet-v4b and unet-v5 had different best epochs (59 and 55) with the same seed. The GPU training is not deterministic, so a difference of approximately 0.01-0.02 on val can be random.
