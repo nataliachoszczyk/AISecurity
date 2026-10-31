@@ -331,3 +331,27 @@ def plot_train_test_profiles(train_images: np.ndarray, test_images: np.ndarray, 
         ax.set_xlabel("row (y)")
     fig.tight_layout()
     return fig
+
+
+def jpeg_error(image: np.ndarray, quality: int) -> float:
+    """Return the mean absolute change (in 1/255) after one more JPEG save with this quality. image: uint8."""
+    import io
+
+    buf = io.BytesIO()
+    Image.fromarray(image).save(buf, format="JPEG", quality=quality)
+    again = np.asarray(Image.open(buf).convert("RGB"), dtype=np.int16)
+    return float(np.abs(again - image).mean())
+
+
+def estimate_jpeg_quality(split: str, ids, qualities=range(50, 97)) -> pd.DataFrame:
+    """Return the JPEG quality with the smallest change after one more save, for each image.
+
+    A decoded JPEG changes very little when it is saved again with its own quality.
+    """
+    rows = []
+    for image_id in ids:
+        img = np.asarray(Image.open(Path(data_dir()) / split / "images" / f"{image_id}.png").convert("RGB"))
+        errors = [jpeg_error(img, q) for q in qualities]
+        best = int(np.argmin(errors))
+        rows.append({"id": image_id, "quality": list(qualities)[best], "error": errors[best]})
+    return pd.DataFrame(rows)

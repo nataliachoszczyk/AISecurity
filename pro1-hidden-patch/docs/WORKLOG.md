@@ -109,3 +109,5 @@
 - gen-speed version 1: fp32 on 1 GPU takes 3.9 ms for each image step (batch 512). Batch 1024 in fp32 is out of memory on one T4. Version 2 catches this error and also measures batch 256.
 - unet-v4b-saliency on the leaderboard: 0.5648 (unet-v4b 0.5590). The difference is smaller than 0.02, thus it can be random.
 - Decision: send a submission only after a clear improvement on val.
+- Added `estimate_jpeg_quality()` to `src/eda.py`: the quality (50-96) with the smallest change after one more JPEG save. On 40 train images, 95% of the estimates are equal to the label, and all are within 1.
+- Added the job `2026-11-01_14_jpeg-quality` (CPU): the estimate for all train and test images. It checks if the test images have a lower JPEG quality.
