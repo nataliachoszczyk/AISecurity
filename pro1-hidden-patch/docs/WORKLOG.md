@@ -90,3 +90,4 @@
   - The target of the targeted PGD is a near class: the class at rank 2-6 of ResNet-18. The task data has a smaller eps for this attack than for the others, so the authors probably used a near class.
   - The strength of C&W is the largest pixel change before JPEG, as in the task labels.
 - Added the option `max_bases` to the generator and the job `2026-11-01_11_gen-smoke`. It runs the full flow of gen-v4 on the Kaggle CPU with 4 bases for each part. The CPU has no session limit, so the test does not wait for a GPU.
+- The generator now makes the jobs in rounds: one copy of each base, then the next copy. Before, it made all copies of one base before the next base. Then a stop at the time limit removed the last bases completely.

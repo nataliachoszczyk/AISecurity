@@ -140,10 +140,13 @@ def attack_search(model, x, mask, c, target, kind: str, quality: np.ndarray) -> 
 
 
 def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng) -> list[dict]:
-    """Return one job for each new image: base, flip, patch box, new decoys, attack and JPEG quality."""
+    """Return one job for each new image: base, flip, patch box, new decoys, attack and JPEG quality.
+
+    The jobs go in rounds: one copy of each base, then the next copy. Thus a stop at the time limit keeps all bases.
+    """
     jobs = []
-    for row in labels.itertuples():
-        for _ in range(copies):
+    for _ in range(copies):
+        for row in labels.itertuples():
             # k = 4 is the horizontal flip. A rotation changes the ResNet-18 class of most images.
             k = int(rng.choice([0, 4])) if hflip else 0
             old = [_box_of(_rect(d["box"]), k) for d in row.decoys]
