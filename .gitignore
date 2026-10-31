@@ -23,3 +23,6 @@ kaggle.json
 # OS files
 *:Zone.Identifier
 .DS_Store
+
+# Submissions stay local: the repository is public
+**/submissions/*.csv
