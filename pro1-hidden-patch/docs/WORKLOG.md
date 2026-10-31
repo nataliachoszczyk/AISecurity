@@ -50,3 +50,8 @@
 - `src/unet.py` now calculates the loss on the tune part after each epoch. `train_log.csv` has the new column `tune_loss`. If the tune loss increases while the train loss decreases, the UNet overfits.
 - Added unet-v3: the same as unet-v2, but with 200 epochs (unet-v2 had 60).
 - Added the job `2026-10-31_05_unet-v3`. From now on, the jobs run on the Kaggle account `jankombajn`. The script stops at once if the kernel has no GPU.
+- Sent saliency-v1 to the leaderboard: 0.5373 (val 0.530). Thus the val set gives a good estimate of the leaderboard score. The best team had 0.6008 at this time.
+- A check of the noise residual: the mean residual energy inside a patch is approximately 1.1 times the energy around it. The decoys have the same ratio. Thus the noise alone does not show the box. The box must come from ResNet-18.
+- Added `src/generate.py`: it makes new attacked images with the patch at any position. The bases are the clean and decoy-only images. For each base, it adds 0-2 new decoys, attacks one random box and saves the image as JPEG (quality 85-95). A binary search finds the smallest strength that works after JPEG. The attacks do not calculate the gradient through JPEG.
+- The generated train set uses only bases from the train part, with flips and rotations. The generated val set uses only bases from the val part, without flips. Thus the generated val set is the first valid check for patches in the top half.
+- Added the job `2026-10-31_06_gen-v1` (config `2026-10-31_06_gen-v1.yaml`): 16 images for each train base and 8 for each val base. The job also scores saliency-v1 on the generated val set and draws `examples.png`. The images stay on Kaggle: the next jobs use the output of this notebook as input.

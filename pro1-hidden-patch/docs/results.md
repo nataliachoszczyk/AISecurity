@@ -6,4 +6,4 @@ Val flip is not valid at this time. A vertical flip makes ResNet-18 misclassify 
 
 | Date | Codename | Description | Train | Val | Val flip | Val mean | Test (leaderboard) |
 |---|---|---|---|---|---|---|---|
-| 2026-10-31 | saliency-v1 | Integrated gradients to a 3x3 median image, then a causal check of 32 candidate boxes with ResNet-18. | 0.548 | 0.530 | 0.246 | 0.388 | not sent yet |
+| 2026-10-31 | saliency-v1 | Integrated gradients to a 3x3 median image, then a causal check of 32 candidate boxes with ResNet-18. | 0.548 | 0.530 | 0.246 | 0.388 | 0.5373 |
