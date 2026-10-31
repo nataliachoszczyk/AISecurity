@@ -124,3 +124,4 @@
 - The generator now runs one process on each GPU (`_generate_shard`), each with every second job. The two parts are joined at the end.
 - unet-v5 (unet-v4b plus 24 candidates from the integrated gradients map): val 0.592 (unet-v4b 0.613). Clean images: 0.86 (unet-v4b 0.96). The extra candidates give boxes on clean images. Thus this idea does not help.
 - unet-v4b and unet-v5 had different best epochs (59 and 55) with the same seed. The GPU training is not deterministic, so a difference of approximately 0.01-0.02 on val can be random.
+- Prepared unet-v6 (job `2026-11-01_15_unet-v6`): unet-v4b on the real train images plus the generated train set, 40 epochs. It needs the Kaggle dataset `jankombajn/bumas-p1-gen` from the output of gen-v4.
