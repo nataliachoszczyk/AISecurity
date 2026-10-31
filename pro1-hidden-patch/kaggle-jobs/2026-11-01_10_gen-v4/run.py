@@ -13,7 +13,7 @@ CODENAMES = ["gen-v4"]
 if __name__ == "__main__":
     import torch
 
-    # A long run on the CPU wastes hours, so stop at once without a GPU.
+    # A long run on the CPU wastes hours, so stop immediately without a GPU.
     assert torch.cuda.is_available(), "no GPU: check the phone verification of the account"
     print(torch.cuda.device_count(), "GPU", flush=True)
 
