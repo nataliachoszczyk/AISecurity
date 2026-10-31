@@ -1,0 +1,15 @@
+# The same as saliency-v1, but the smoothed image is a Gaussian blur with sigma 1.0.
+seed: 0
+tune_n: 1500
+batch: 256
+chunk: 1024
+smooth: gauss1.0
+ig_steps: 8
+area_min: 0.07
+area_max: 0.16
+ratio_max: 2.0
+size_step: 1
+ig_candidates: 24
+residual_candidates: 8
+ties: [0.5, 0.7, 0.8, 0.9, 0.95, 1.0]
+thresholds: [0.0, 3.0, 61]

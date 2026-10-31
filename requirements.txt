@@ -11,5 +11,6 @@ scikit-learn
 scipy
 matplotlib
 tqdm
+pyyaml
 jupyter
 kaggle
