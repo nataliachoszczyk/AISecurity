@@ -6,7 +6,7 @@ REPO = "https://github.com/nataliachoszczyk/AISecurity.git"
 BRANCH = "pro1"
 PROJECT = "pro1-hidden-patch"
 CLONE = "/tmp/repo"  # Not in /kaggle/working, so the clone is not an output.
-CODENAMES = ["unet-v1"]
+CODENAMES = ["unet-v2"]
 
 subprocess.run(["git", "clone", "--depth", "1", "--branch", BRANCH, "--filter=blob:none", "--sparse", REPO, CLONE], check=True)
 subprocess.run(["git", "-C", CLONE, "sparse-checkout", "set", PROJECT], check=True)

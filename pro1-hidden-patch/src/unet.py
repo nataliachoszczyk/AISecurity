@@ -2,7 +2,9 @@
 
 1. The UNet gets the image and its noise residual (image minus 3x3 median), as in
    steganalysis (Liu et al. 2019) and the SRM noise stream (Zhou et al. 2018).
-   It predicts two masks: the patch and the decoys.
+   With use_ig, it also gets the integrated gradients map of ResNet-18 (see saliency.py).
+   The map is calculated on the image before the flips and rotations.
+   The UNet predicts two masks: the patch and the decoys.
 2. Flips and 90 degree rotations are valid augmentations for this task: noise stays noise,
    and the 8x8 JPEG grid stays aligned because 64 is a multiple of 8. Thus the UNet also
    learns patches in the top half, which the train set does not have. The prediction is the
@@ -24,7 +26,7 @@ from scipy.ndimage import find_objects, label
 from .eda import SIZE, load_images, load_model, load_test_ids
 from .evaluate import BOX, eval_set, points_array, score_report
 from .paths import output_dir
-from .saliency import answers_frame, causal_drops, margin, smooth
+from .saliency import answers_frame, causal_drops, integrated_gradients, margin, smooth
 
 
 def block(cin: int, cout: int) -> nn.Sequential:
@@ -37,15 +39,15 @@ def block(cin: int, cout: int) -> nn.Sequential:
 class UNet(nn.Module):
     """Four levels (64, 32, 16, 8 pixels). The deepest level sees the full image."""
 
-    def __init__(self, width: int = 32):
+    def __init__(self, width: int = 32, extra: int = 0):
         super().__init__()
         w = [width, 2 * width, 4 * width, 8 * width]
-        self.down = nn.ModuleList([block(6, w[0]), block(w[0], w[1]), block(w[1], w[2]), block(w[2], w[3])])
+        self.down = nn.ModuleList([block(6 + extra, w[0]), block(w[0], w[1]), block(w[1], w[2]), block(w[2], w[3])])
         self.up = nn.ModuleList([block(w[3] + w[2], w[2]), block(w[2] + w[1], w[1]), block(w[1] + w[0], w[0])])
         self.out = nn.Conv2d(w[0], 2, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = torch.cat([x, x - smooth(x, "median3")], 1)
+        x = torch.cat([x, x[:, :3] - smooth(x[:, :3], "median3")], 1)
         skips = []
         for i, layer in enumerate(self.down):
             x = layer(x if i == 0 else F.max_pool2d(x, 2))
@@ -81,10 +83,23 @@ def to_tensor(images: np.ndarray, device: str) -> torch.Tensor:
     return torch.from_numpy(np.ascontiguousarray(images)).permute(0, 3, 1, 2).to(device)
 
 
-def train(images: np.ndarray, masks: np.ndarray, cfg: dict, device: str) -> UNet:
+def unet_inputs(resnet, images: np.ndarray, cfg: dict, device: str) -> np.ndarray:
+    """Return the UNet input (N, C, SIZE, SIZE): RGB and, with use_ig, the scaled integrated gradients map."""
+    parts = []
+    for i in range(0, len(images), cfg["batch_causal"]):
+        x = to_tensor(images[i:i + cfg["batch_causal"]], device)
+        if cfg["use_ig"]:
+            c = resnet(x).argmax(1)
+            ig = integrated_gradients(resnet, x, smooth(x, "median3"), c, cfg["ig_steps"])[:, None]
+            x = torch.cat([x, ig / (ig.abs().amax((2, 3), keepdim=True) + 1e-8)], 1)
+        parts.append(x.detach().cpu().numpy())
+    return np.concatenate(parts)
+
+
+def train(inputs: np.ndarray, masks: np.ndarray, cfg: dict, device: str) -> UNet:
     torch.manual_seed(cfg["seed"])
-    x, y = to_tensor(images, device), torch.from_numpy(masks).to(device)
-    model = UNet(cfg["width"]).to(device)
+    x, y = torch.from_numpy(inputs).to(device), torch.from_numpy(masks).to(device)
+    model = UNet(cfg["width"], inputs.shape[1] - 3).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     steps_per_epoch = -(-len(x) // cfg["batch"])
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, cfg["lr"], total_steps=cfg["epochs"] * steps_per_epoch)
@@ -111,11 +126,11 @@ def train(images: np.ndarray, masks: np.ndarray, cfg: dict, device: str) -> UNet
 
 
 @torch.no_grad()
-def predict_masks(model: UNet, images: np.ndarray, device: str, batch: int = 500) -> np.ndarray:
+def predict_masks(model: UNet, inputs: np.ndarray, device: str, batch: int = 500) -> np.ndarray:
     """Return the mean probability over the 8 flips and rotations. Shape (N, 2, SIZE, SIZE)."""
     out = []
-    for i in range(0, len(images), batch):
-        x = to_tensor(images[i:i + batch], device)
+    for i in range(0, len(inputs), batch):
+        x = torch.from_numpy(inputs[i:i + batch]).to(device)
         p = sum(undo_dihedral(torch.sigmoid(model(dihedral(x, k))), k) for k in range(8)) / 8
         out.append(p.cpu().numpy())
     return np.concatenate(out)
@@ -140,9 +155,8 @@ def candidate_boxes(probs: np.ndarray, threshold: float, min_area: int, k: int) 
     return boxes, patch_prob
 
 
-@torch.no_grad()
 def analyze(resnet, unet, images: np.ndarray, cfg: dict, device: str) -> dict:
-    probs = predict_masks(unet, images, device)
+    probs = predict_masks(unet, unet_inputs(resnet, images, cfg, device), device)
     boxes, patch_prob = candidate_boxes(probs, cfg["mask_threshold"], cfg["min_area"], cfg["candidates"])
     drops, margins = [], []
     for i in range(0, len(images), cfg["batch_causal"]):
@@ -192,11 +206,12 @@ def run_experiment(cfg: dict) -> dict:
     out_dir = output_dir() / cfg["codename"]
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    resnet = load_model().to(device).requires_grad_(False)
     labels, images = eval_set("train")
     is_tune = labels.index.isin(labels.sample(frac=cfg["tune_fraction"], random_state=cfg["seed"]).index)
-    unet = train(images[~is_tune], target_masks(labels[~is_tune]), cfg, device)
+    inputs = unet_inputs(resnet, images[~is_tune], cfg, device)
+    unet = train(inputs, target_masks(labels[~is_tune]), cfg, device)
     torch.save(unet.state_dict(), out_dir / "unet.pt")
-    resnet = load_model().to(device).requires_grad_(False)
 
     tune_labels = labels[is_tune].reset_index(drop=True)
     tune_cand = analyze(resnet, unet, images[is_tune], cfg, device)

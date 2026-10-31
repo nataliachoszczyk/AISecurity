@@ -2,6 +2,7 @@
 seed: 0
 tune_fraction: 0.1
 width: 32
+use_ig: false
 epochs: 60
 batch: 64
 lr: 0.002
