@@ -105,16 +105,18 @@ def cw_attack(model, x, mask, c, const) -> torch.Tensor:
     return (x + delta.detach() * mask).clamp(0, 1)
 
 
-def attack_search(model, x, mask, c, target, kind: str, quality: np.ndarray) -> tuple[torch.Tensor, np.ndarray]:
+def attack_search(model, x, mask, c, target, kind: str, quality: np.ndarray) -> tuple[torch.Tensor, np.ndarray, np.ndarray]:
     """Binary search for the smallest strength level that works after JPEG.
 
-    Return the JPEG images and the found level index for each image (-1 if no level works).
+    Return the JPEG images, the found level index (-1 if no level works) and the strength in 1/255.
+    The strength is eps for PGD and MI-FGSM, and the largest pixel change before JPEG for C&W, as in the task labels.
     """
     levels = CW_CONSTS if kind == "cw_l2_u" else EPS_LEVELS
     n = len(x)
     lo, hi = np.zeros(n, int), np.full(n, len(levels) - 1)
     best = torch.zeros_like(x)
     found = np.full(n, -1)
+    strength = np.full(n, np.nan)
     while (lo <= hi).any():
         active = np.where(lo <= hi)[0]
         mid = (lo[active] + hi[active]) // 2
@@ -124,15 +126,17 @@ def attack_search(model, x, mask, c, target, kind: str, quality: np.ndarray) -> 
             adv = cw_attack(model, x[idx], mask[idx], c[idx], value)
         else:
             adv = linf_attack(model, x[idx], mask[idx], c[idx], target[idx], value, kind)
+        change = ((adv - x[idx]).abs().amax((1, 2, 3)) * 255).cpu().numpy()
         adv = jpeg(adv, quality[active])
         with torch.no_grad():
             pred = model(adv).argmax(1)
         ok = (pred == target[idx] if kind == "pgd_linf_t" else pred != c[idx]).cpu().numpy()
         best[idx[torch.from_numpy(ok).to(x.device)]] = adv[torch.from_numpy(ok).to(x.device)]
         found[active[ok]] = mid[ok]
+        strength[active[ok]] = change[ok] if kind == "cw_l2_u" else levels[mid[ok]] * 255
         hi[active[ok]] = mid[ok] - 1
         lo[active[~ok]] = mid[~ok] + 1
-    return best, found
+    return best, found, strength
 
 
 def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng) -> list[dict]:
@@ -162,7 +166,7 @@ def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng) -> list[dict]
                                "noise": decoy_noise(rng, kind, eps, b[3] - b[1], b[2] - b[0])})
             jobs.append({"base": row.id, "k": k, "box": box, "old_decoys": old, "decoys": decoys,
                          "attack": str(rng.choice(ATTACKS)), "jpeg": int(rng.integers(85, 96)),
-                         "target": int(rng.integers(200))})
+                         "target_rank": int(rng.integers(1, 6))})
     return jobs
 
 
@@ -214,10 +218,13 @@ def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
         c = torch.tensor([base_class[j["base"]] for j in part_jobs], device=device)
         quality = np.array([j["jpeg"] for j in part_jobs])
         with torch.no_grad():
-            same = (model(jpeg(x, quality)).argmax(1) == c).cpu().numpy()
+            logits = model(jpeg(x, quality))
+        same = (logits.argmax(1) == c).cpu().numpy()
         rejected["class"] += int((~same).sum())
-        target = torch.tensor([j["target"] for j in part_jobs], device=device)
-        target = torch.where(target == c, (target + 1) % 200, target)
+        # A random target class fails in most images. The task data has a smaller eps for the targeted attack
+        # than for the others, so the target is probably a near class: here the class at rank 2-6.
+        rank = torch.tensor([j["target_rank"] for j in part_jobs], device=device)
+        target = logits.topk(6, 1).indices.gather(1, rank[:, None])[:, 0]
         attacks = np.array([j["attack"] for j in part_jobs])
         for kind in ATTACKS:
             sel = np.where((attacks == kind) & same)[0]
@@ -225,7 +232,7 @@ def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
                 continue
             idx = torch.from_numpy(sel).to(device)
             t0 = time.time()
-            adv, found = attack_search(model, x[idx], mask[idx], c[idx], target[idx], kind, quality[sel])
+            adv, found, strength = attack_search(model, x[idx], mask[idx], c[idx], target[idx], kind, quality[sel])
             print(f"  {kind}: {len(sel)} images in {time.time() - t0:.0f} s, {int((found >= 0).sum())} work", flush=True)
             adv = (adv.permute(0, 2, 3, 1).cpu().numpy() * 255).round().astype(np.uint8)
             for i, j_idx in enumerate(sel):
@@ -233,10 +240,10 @@ def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
                     rejected["attack"] += 1
                     continue
                 j = part_jobs[j_idx]
-                strength = (CW_CONSTS[found[i]] if kind == "cw_l2_u" else EPS_LEVELS[found[i]] * 255)
                 rows.append({"id": f"gen_{part}_{start + j_idx}", "base": j["base"], "k": j["k"], "base_class": int(c[j_idx]),
                              **dict(zip(BOX, j["box"])), "kind": "ADV", "attack": kind,
-                             "strength": float(strength), "jpeg": j["jpeg"],
+                             "strength": float(strength[i]), "target": int(target[j_idx]) if kind == "pgd_linf_t" else -1,
+                             "jpeg": j["jpeg"],
                              "decoys": [{"box": b} for b in j["old_decoys"]] + [{"box": d["box"]} for d in j["decoys"]]})
                 images.append(adv[i])
         print(f"{part}: {min(start + batch, len(jobs))}/{len(jobs)} jobs, {len(rows)} images, {rejected} rejected", flush=True)

@@ -1,0 +1,14 @@
+# gen-v3 with a near target class for the targeted PGD and the real largest pixel change for C&W. The one set for the Kaggle dataset.
+seed: 0
+train_copies: 64
+val_copies: 20
+hflip: true
+batch: 2048
+# The train part stops after this time. The limit of a Kaggle session is 12 hours.
+hours: 9
+# Parameters of saliency-v1 from its Kaggle run (kaggle-jobs/2026-10-31_02_saliency/saliency-v1/metrics.json).
+saliency_tie: 0.9
+saliency_threshold: 1.85
+# The tune part of the UNet (src/evaluate.py tune_ids): the same values as tune_fraction and seed in the UNet configs.
+tune_fraction: 0.1
+tune_seed: 0

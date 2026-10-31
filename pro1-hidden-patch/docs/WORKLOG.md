@@ -79,4 +79,13 @@
 
 - gen-v3 printed no progress after 14 minutes, because its first batch has 2000 images. The live log works: `kaggle kernels logs -f <kernel id>`.
 - The generator now prints the time of each attack in each batch.
-- Added the job `2026-11-01_10_gen-speed`: one batch of 300 images, to estimate the run time of gen-v3.
+- The first batch of gen-v3 (val, 2000 jobs) took approximately 22 minutes (0.66 s for each job). Thus a speed test job is not necessary.
+- Results of this batch:
+  - 1145 images. 36 jobs were rejected by the class check and 819 by the attack (no strength level works after JPEG).
+  - The targeted PGD worked only in 100 of approximately 490 jobs. The target was a random class.
+  - The strength of PGD and MI-FGSM is the same as in the task data (median 10/255).
+  - For C&W, the strength column had the constant of the attack, not the largest pixel change.
+  - saliency-v1 on the generated val set (patch images only): 0.437 in the bottom half and 0.418 in the top half. Thus saliency-v1 also works for patches in the top half.
+- gen-v4 (job `2026-11-01_10_gen-v4`) corrects the two problems:
+  - The target of the targeted PGD is a near class: the class at rank 2-6 of ResNet-18. The task data has a smaller eps for this attack than for the others, so the authors probably used a near class.
+  - The strength of C&W is the largest pixel change before JPEG, as in the task labels.
