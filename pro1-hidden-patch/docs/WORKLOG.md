@@ -106,3 +106,4 @@
   - In 7.0%, only unet-v4b answers 0,0,0,0, and saliency-v1 gives a box. These are probably patch images where the UNet masks are weak.
 - Made `submission_unet-v4b-saliency.csv`: unet-v4b, but the saliency-v1 box where only unet-v4b answers 0,0,0,0 (349 images, 20.0% of 0,0,0,0 answers).
 - Added the option `ig_candidates` to `src/unet.py`: more candidate boxes from the integrated gradients map. Job `2026-11-01_13_unet-v5`: unet-v4b with 24 of these candidates.
+- gen-speed version 1: fp32 on 1 GPU takes 3.9 ms for each image step (batch 512). Batch 1024 in fp32 is out of memory on one T4. Version 2 catches this error and also measures batch 256.

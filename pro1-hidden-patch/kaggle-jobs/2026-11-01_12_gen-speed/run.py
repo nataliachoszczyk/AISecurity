@@ -43,13 +43,18 @@ eps = torch.full((len(x),), 8 / 255, device="cuda")
 
 for gpus in [1, 2]:
     model = torch.nn.DataParallel(base_model) if gpus == 2 else base_model
-    for amp in [False, True]:
-        for n in [512, 1024]:
+    for amp in [True, False]:
+        for n in [256, 512, 1024]:
             gen.AMP = amp
             gen.linf_attack(model, x[:64], mask[:64], c[:64], c[:64], eps[:64], "pgd_linf_u")  # warm-up
             torch.cuda.synchronize()
             t0 = time.time()
-            adv = gen.linf_attack(model, x[:n], mask[:n], c[:n], c[:n], eps[:n], "pgd_linf_u")
+            try:
+                adv = gen.linf_attack(model, x[:n], mask[:n], c[:n], c[:n], eps[:n], "pgd_linf_u")
+            except torch.OutOfMemoryError:
+                print(f"gpus {gpus} amp {amp} batch {n}: out of memory", flush=True)
+                torch.cuda.empty_cache()
+                continue
             torch.cuda.synchronize()
             seconds = time.time() - t0
             with torch.no_grad():
