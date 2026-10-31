@@ -91,3 +91,6 @@
   - The strength of C&W is the largest pixel change before JPEG, as in the task labels.
 - Added the option `max_bases` to the generator and the job `2026-11-01_11_gen-smoke`. It runs the full flow of gen-v4 on the Kaggle CPU with 4 bases for each part. The CPU has no session limit, so the test does not wait for a GPU.
 - The generator now makes the jobs in rounds: one copy of each base, then the next copy. Before, it made all copies of one base before the next base. Then a stop at the time limit removed the last bases completely.
+- The ResNet-18 of the task has no downsampling in the stem (3x3 conv, stride 1, no max-pool). Thus each attack step costs approximately 2 GFLOP for each image, and the GPU is the limit.
+- Added fp16 (autocast) to the attack steps. The final check of each attack stays in fp32.
+- Added the job `2026-11-01_12_gen-speed`: the time of one PGD attack with fp32 or fp16, on 1 GPU or on 2 GPUs.

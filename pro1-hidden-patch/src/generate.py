@@ -35,6 +35,13 @@ ATTACKS = ["pgd_linf_u", "pgd_linf_t", "mifgsm_linf_u", "cw_l2_u"]
 EPS_LEVELS = np.array([2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20]) / 255
 CW_CONSTS = np.logspace(-2, 2, 12)
 CW_LINF = 20 / 255
+# fp16 makes the attack steps several times faster on a T4. The final check of the attack uses fp32.
+AMP = True
+
+
+def amp_model(model, x: torch.Tensor) -> torch.Tensor:
+    with torch.autocast("cuda", dtype=torch.float16, enabled=AMP and x.is_cuda):
+        return model(x).float()
 
 
 def random_box(rng, taken: np.ndarray) -> tuple[int, int, int, int] | None:
@@ -78,7 +85,7 @@ def linf_attack(model, x, mask, c, target, eps, kind: str) -> torch.Tensor:
     delta, g = torch.zeros_like(x), torch.zeros_like(x)
     for _ in range(steps):
         delta.requires_grad_(True)
-        logits = model((x + delta * mask).clamp(0, 1))
+        logits = amp_model(model, (x + delta * mask).clamp(0, 1))
         loss = F.cross_entropy(logits, target if targeted else c, reduction="sum")
         (grad,) = torch.autograd.grad(loss, delta)
         if kind == "mifgsm_linf_u":
@@ -95,7 +102,7 @@ def cw_attack(model, x, mask, c, const) -> torch.Tensor:
     opt = torch.optim.Adam([delta], lr=0.01)
     for _ in range(100):
         z = (x + delta * mask).clamp(0, 1)
-        f = margin(model(z), c).clamp(min=-1.0)
+        f = margin(amp_model(model, z), c).clamp(min=-1.0)
         loss = ((delta * mask) ** 2).sum((1, 2, 3)) + const * f
         opt.zero_grad()
         loss.sum().backward()
