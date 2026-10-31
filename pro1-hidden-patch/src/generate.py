@@ -6,7 +6,8 @@ overlap them. The steps follow the description of the task data:
    The horizontal flip and the decoys must keep the ResNet-18 class of the upright base after JPEG.
 2. Attack the image inside one random box: PGD (untargeted, targeted), MI-FGSM or C&W.
    A binary search finds the smallest strength that works after JPEG.
-3. Save the image as JPEG and use the decoded image.
+3. Save the image as JPEG (quality 80-95) and use the decoded image. Approximately 20% of the test images
+   have a quality of 80-88. The train images have only 90-95.
 The attacks do not calculate the gradient through JPEG. Thus they need a slightly larger strength.
 """
 import io
@@ -147,7 +148,7 @@ def attack_search(model, x, mask, c, target, kind: str, quality: np.ndarray) -> 
     return best, found, strength
 
 
-def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng) -> list[dict]:
+def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng, jpeg_range=(80, 95)) -> list[dict]:
     """Return one job for each new image: base, flip, patch box, new decoys, attack and JPEG quality.
 
     The jobs go in rounds: one copy of each base, then the next copy. Thus a stop at the time limit keeps all bases.
@@ -176,7 +177,7 @@ def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng) -> list[dict]
                 decoys.append({"type": kind, "strength": eps * 255, "box": b,
                                "noise": decoy_noise(rng, kind, eps, b[3] - b[1], b[2] - b[0])})
             jobs.append({"base": row.id, "k": k, "box": box, "old_decoys": old, "decoys": decoys,
-                         "attack": str(rng.choice(ATTACKS)), "jpeg": int(rng.integers(85, 96)),
+                         "attack": str(rng.choice(ATTACKS)), "jpeg": int(rng.integers(jpeg_range[0], jpeg_range[1] + 1)),
                          "target_rank": int(rng.integers(1, 6))})
     return jobs
 
@@ -196,24 +197,24 @@ def _box_of(mask: np.ndarray, k: int) -> tuple[int, int, int, int]:
 
 def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
              deadline: float | None = None, exclude: set = frozenset(),
-             max_bases: int | None = None) -> tuple[pd.DataFrame, np.ndarray]:
+             max_bases: int | None = None, shard: tuple[int, int] = (0, 1),
+             device: str | None = None, jpeg_range=(80, 95)) -> tuple[pd.DataFrame, np.ndarray]:
     """Return the labels and the uint8 images (N, SIZE, SIZE, 3) of the new attacked images.
 
     part selects the bases from splits/split.csv: train or val. exclude has ids that are not bases.
     max_bases uses only the first bases, for a smoke test.
     After the deadline (time.time()), no new batch starts.
+    shard = (i, n) makes only every n-th job, from job i. One process on each GPU makes one shard.
     """
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model = load_model().to(device).requires_grad_(False)
-    if torch.cuda.device_count() > 1:
-        model = torch.nn.DataParallel(model)
     rng = np.random.default_rng(seed)
     labels = load_labels().merge(load_split(), on="id")
     bases = labels[(labels.part == part) & labels.kind.isin(["CLEAN", "DECOY"]) & ~labels.id.isin(exclude)]
     bases = bases.reset_index(drop=True)[:max_bases]
     print(f"{part}: {len(bases)} bases", flush=True)
     base_images = dict(zip(bases.id, load_images("train", bases.id)))
-    jobs = make_jobs(bases, copies, hflip, rng)
+    jobs = make_jobs(bases, copies, hflip, rng, jpeg_range)[shard[0]::shard[1]]
     with torch.no_grad():
         upright = torch.from_numpy(np.stack(list(base_images.values()))).permute(0, 3, 1, 2).to(device)
         base_class = dict(zip(base_images, model(upright).argmax(1).tolist()))
@@ -253,7 +254,7 @@ def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
                     rejected["attack"] += 1
                     continue
                 j = part_jobs[j_idx]
-                rows.append({"id": f"gen_{part}_{start + j_idx}", "base": j["base"], "k": j["k"], "base_class": int(c[j_idx]),
+                rows.append({"id": f"gen_{part}_{shard[0]}_{start + j_idx}", "base": j["base"], "k": j["k"], "base_class": int(c[j_idx]),
                              **dict(zip(BOX, j["box"])), "kind": "ADV", "attack": kind,
                              "strength": float(strength[i]), "target": int(target[j_idx]) if kind == "pgd_linf_t" else -1,
                              "jpeg": j["jpeg"],
@@ -299,10 +300,20 @@ def run_generation(cfg: dict) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     # Stop the train part in time, so the zip is complete before the Kaggle limit of 12 hours.
     deadline = time.time() + cfg["hours"] * 3600
+    n = max(1, torch.cuda.device_count())
     for part in ["val", "train"]:
-        labels, images = generate(part, cfg[f"{part}_copies"], cfg["hflip"], cfg["seed"] + (part == "val"), cfg["batch"],
-                                  deadline if part == "train" else None, tune_ids(cfg["tune_fraction"], cfg["tune_seed"]),
-                                  cfg.get("max_bases"))
+        args = [(part, cfg, deadline if part == "train" else None, (i, n), out_dir) for i in range(n)]
+        if n > 1:
+            # DataParallel was slower than one GPU (gen-speed), so each GPU runs its own process.
+            with torch.multiprocessing.get_context("spawn").Pool(n) as pool:
+                pool.starmap(_generate_shard, args)
+        else:
+            _generate_shard(*args[0])
+        labels = pd.concat([load_set(out_dir / f"{part}_{i}")[0] for i in range(n)], ignore_index=True)
+        images = np.concatenate([np.load(out_dir / f"{part}_{i}.npy") for i in range(n)])
+        for i in range(n):
+            for ext in ["npy", "csv"]:
+                (out_dir / f"{part}_{i}.{ext}").unlink()
         save_set(out_dir / part, labels, images)
         summary = labels.groupby("attack").strength.describe()
         summary.to_csv(out_dir / f"summary_{part}.csv")
@@ -319,6 +330,14 @@ def run_generation(cfg: dict) -> None:
             for ext in ["npy", "csv"]:
                 z.write(out_dir / f"{part}.{ext}", f"{part}.{ext}")
                 (out_dir / f"{part}.{ext}").unlink()
+
+
+def _generate_shard(part: str, cfg: dict, deadline: float | None, shard: tuple[int, int], out_dir) -> None:
+    device = f"cuda:{shard[0]}" if torch.cuda.is_available() else "cpu"
+    labels, images = generate(part, cfg[f"{part}_copies"], cfg["hflip"], cfg["seed"] + (part == "val"), cfg["batch"],
+                              deadline, tune_ids(cfg["tune_fraction"], cfg["tune_seed"]), cfg.get("max_bases"), shard, device,
+                              cfg.get("jpeg", (80, 95)))
+    save_set(out_dir / f"{part}_{shard[0]}", labels, images)
 
 
 def check_strength(labels: pd.DataFrame, max_gap: float) -> None:
@@ -339,7 +358,9 @@ def score_saliency(labels: pd.DataFrame, images: np.ndarray, cfg: dict) -> pd.Da
     cand = analyze(model, images, load_config("saliency-v1"), device)
     answers = answers_frame(labels.id, choose(cand, cfg["saliency_tie"], cfg["saliency_threshold"]))
     half = np.where((labels.y_min + labels.y_max) / 2 < SIZE / 2, "top half", "bottom half")
-    report = pd.concat([score_report(labels, answers), score_report(labels.assign(attack=half), answers).iloc[1:]])
+    band = np.where(labels.jpeg < 90, "JPEG 80-89", "JPEG 90-95")
+    report = pd.concat([score_report(labels, answers), score_report(labels.assign(attack=half), answers).iloc[1:],
+                        score_report(labels.assign(attack=band), answers).iloc[1:]])
     print(report, flush=True)
     return report
 

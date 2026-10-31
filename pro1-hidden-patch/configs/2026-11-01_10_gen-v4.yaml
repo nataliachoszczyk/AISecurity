@@ -12,3 +12,5 @@ saliency_threshold: 1.85
 # The tune part of the UNet (src/evaluate.py tune_ids): the same values as tune_fraction and seed in the UNet configs.
 tune_fraction: 0.1
 tune_seed: 0
+# JPEG quality range. The test has 80-96 (about 20% of the images below 90). The train images have only 90-96.
+jpeg: [80, 95]

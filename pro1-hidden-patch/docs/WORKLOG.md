@@ -114,3 +114,11 @@
 - gen-smoke passed the full flow on the CPU (generation, save, examples, saliency check, zip). It found one problem: the C&W strength was 17-20/255 (task data: median 9.6/255).
 - C&W now uses an Adam step of 0.001 (before 0.01). With the larger step the change reached the 20/255 limit after a few steps, and the L2 term could not make it small.
 - Added `check_strength()`: after the generated val set, the run stops if the median strength of an attack differs from the task data by more than 4/255. Thus a wrong attack does not use 9 hours of GPU.
+- jpeg-quality results: the estimate is equal to the train label for 94.3% of the train images, and within 1 for 99.9%.
+  - Train: quality 90-96 only.
+  - Test: 995 images (approximately 20%) have a quality of 80-88. The other test images have 90-96. These are probably the "more difficult" test images of the task.
+  - unet-v4b answers 0,0,0,0 for 30.0% of the test images with quality 80-88, and for 26.3% of the others. saliency-v1: 21.8% and 20.7%.
+- gen-v4 now uses a JPEG quality of 80-95 (config `jpeg`). Thus the UNet learns patches after a stronger compression, and the generated val set can measure this case. The real val set has no such images.
+- The reports of the generated val set now also show the JPEG quality bands 80-89 and 90-95.
+- gen-speed: DataParallel on 2 GPUs is slower than 1 GPU (fp16: 1.73 ms against 0.93 ms for each image step). fp16 is approximately 3.6 times faster than fp32 (0.93 ms against 3.37 ms), with the same success after JPEG.
+- The generator now runs one process on each GPU (`_generate_shard`), each with every second job. The two parts are joined at the end.

@@ -295,7 +295,9 @@ def run_experiment(cfg: dict) -> dict:
         answers = answers_frame(lab.id, choose(cand, params["rule"], params["threshold"]))
         report = score_report(lab, answers)
         if "half" in lab:
-            report = pd.concat([report, score_report(lab.assign(attack=lab.half), answers).iloc[1:]])
+            band = np.where(lab.jpeg < 90, "JPEG 80-89", "JPEG 90-95")
+            report = pd.concat([report, score_report(lab.assign(attack=lab.half), answers).iloc[1:],
+                                score_report(lab.assign(attack=band), answers).iloc[1:]])
         report.to_csv(out_dir / f"report_{name}.csv", index=False)
         metrics[name] = float(report.points.iloc[0])
         metrics[f"mask_iou_{name}"] = mask_iou(cand["probs"], target_masks(lab))
