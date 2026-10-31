@@ -1,0 +1,14 @@
+{
+  "codename": "unet-v4b",
+  "tune_score": 0.6080748697567098,
+  "rule": "causal",
+  "threshold": 1.35,
+  "best_epoch": 59,
+  "tune": 0.6080748697567098,
+  "mask_iou_tune": 0.37047939311020767,
+  "val": 0.6126521816261558,
+  "mask_iou_val": 0.3453910417343456,
+  "val_flip": 0.2754044612817964,
+  "mask_iou_val_flip": 0.031200284339640408,
+  "val_mean": 0.4440283214539761
+}

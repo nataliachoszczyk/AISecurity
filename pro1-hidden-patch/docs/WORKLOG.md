@@ -94,3 +94,9 @@
 - The ResNet-18 of the task has no downsampling in the stem (3x3 conv, stride 1, no max-pool). Thus each attack step costs approximately 2 GFLOP for each image, and the GPU is the limit.
 - Added fp16 (autocast) to the attack steps. The final check of each attack stays in fp32.
 - Added the job `2026-11-01_12_gen-speed`: the time of one PGD attack with fp32 or fp16, on 1 GPU or on 2 GPUs.
+- unet-v4 results (val):
+  - unet-v4a (old boxes, best epoch 55): 0.448. The weights of the best epoch alone do not help.
+  - unet-v4b (fitted boxes, best epoch 59): 0.613. This is the best result. The fitted boxes give +0.165 on the same UNet.
+  - unet-v4b by attack: C&W 0.578, MI-FGSM 0.399, PGD targeted 0.602, PGD untargeted 0.515, clean 0.96, decoy-only 0.98.
+  - The two runs had the same seed, but different best epochs. Thus the GPU training is not fully deterministic.
+- The submission of unet-v4b has 27% of 0,0,0,0 answers (20% expected). 51% of the boxes are in the top half.
