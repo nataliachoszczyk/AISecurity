@@ -196,3 +196,11 @@
 - `jobs/JOBS.md`: the column Job now has the job name of the folder (for example `unet-v7ab`). `wait.sh` gets this name.
 - `jobs/JOBS.md`: the three rows of the smoke job (versions 1-3) are now one row. Rule: one job folder has one row.
 - Moved the job folders to `jobs/runs/`. Thus `jobs/` shows only `JOBS.md`, `wait.sh` and `runs/`.
+- unet-v8 results (job `2026-11-01_18_unet-v8`, 4 hours):
+  - unet-v8a (200 epochs): tune 0.668, val 0.674, val flip 0.355, generated val 0.551.
+  - unet-v8b (200 epochs, train seed 1): tune 0.666, val 0.676, val flip 0.351, generated val 0.552.
+  - unet-v7d (100 epochs): tune 0.665, val 0.663, generated val 0.553.
+  - The two seeds differ by approximately 0.002 on val. Thus the gain of 200 epochs (+0.011) is larger than the seed noise.
+  - Both runs select the last epoch (199). The tune loss rises after epoch 180, but the tune points still rise.
+  - The generated val set shows no gain.
+- Decision: submission `submission_unet-v8b.csv`. It has the higher val of the two seeds.
