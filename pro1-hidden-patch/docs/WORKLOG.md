@@ -204,3 +204,4 @@
   - Both runs select the last epoch (199). The tune loss rises after epoch 180, but the tune points still rise.
   - The generated val set shows no gain.
 - Decision: submission `submission_unet-v8b.csv`. It has the higher val of the two seeds.
+- Leaderboard: unet-v8b got 0.6501 (unet-v6 0.6212). It answers 0,0,0,0 for 1132 of the 5000 test images (23%).
