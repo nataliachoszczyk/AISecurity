@@ -163,20 +163,7 @@ for codename in CODENAMES:
 
 A T4 x2 session has two GPUs, and the quota counts the session. A job that uses one GPU wastes half of its cost.
 
-Measurements from one project (a ResNet-18 and a small UNet, 64x64 images):
-
-| Setup | Time for each image step |
-|---|---|
-| fp32, 1 GPU | 3.4 ms |
-| fp16 (autocast), 1 GPU | 0.93 ms |
-| fp16, 2 GPUs with `DataParallel` | 1.77 ms (slower than 1 GPU) |
-| fp32, 2 GPUs with `DataParallel` | 8.5 ms |
-
-Conclusions:
-
-- Use fp16 with `torch.autocast` and `GradScaler`. On a T4 it is approximately 3.6 times faster than fp32, with the same results.
-- Do not use `DataParallel` for small models. The copies between the GPUs take more time than the computation.
-- Run one process on each GPU. Each process does its own work: one experiment, or one half of the data (shard).
+One process on each GPU uses both GPUs. Each process does its own work: one experiment, or one half of the data (shard).
 
 ### `run.py` for two experiments, one on each GPU
 
