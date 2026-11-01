@@ -97,58 +97,116 @@ def unet_inputs(resnet, images: np.ndarray, cfg: dict, device: str) -> np.ndarra
     return np.concatenate(parts)
 
 
-def mask_loss(logits: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    """Return BCE plus Dice loss."""
-    p = torch.sigmoid(logits)
-    dice = 1 - (2 * (p * y).sum((2, 3)) + 1) / (p.sum((2, 3)) + y.sum((2, 3)) + 1)
-    return F.binary_cross_entropy_with_logits(logits, y) + dice.mean()
+def lovasz_hinge(logits: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """Return the Lovasz hinge loss (Berman et al. 2018) of each image and channel, shape (N, C).
+
+    It is a convex surrogate of 1 - IoU of the mask.
+    """
+    logits, y = logits.flatten(2), y.flatten(2)
+    errors = 1 - logits * (2 * y - 1)
+    errors, order = errors.sort(-1, descending=True)
+    gt = y.gather(-1, order)
+    total = gt.sum(-1, keepdim=True)
+    jaccard = 1 - (total - gt.cumsum(-1)) / (total + (1 - gt).cumsum(-1))
+    grad = torch.cat([jaccard[..., :1], jaccard[..., 1:] - jaccard[..., :-1]], -1)
+    return (F.relu(errors) * grad).sum(-1)
+
+
+def mask_loss(logits: torch.Tensor, y: torch.Tensor, cfg: dict | None = None) -> torch.Tensor:
+    """Return BCE plus Dice loss, or BCE plus Lovasz hinge loss with cfg loss: lovasz.
+
+    cfg patch_weight gives the patch channel more weight than the decoy channel. Only the patch box gives points.
+    """
+    cfg = cfg or {}
+    logits = logits.float()
+    w = torch.tensor([cfg.get("patch_weight", 1.0), 1.0], device=logits.device)
+    bce = F.binary_cross_entropy_with_logits(logits, y, reduction="none").mean((0, 2, 3))
+    if cfg.get("loss") == "lovasz":
+        region = lovasz_hinge(logits, y).mean(0)
+    else:
+        p = torch.sigmoid(logits)
+        region = (1 - (2 * (p * y).sum((2, 3)) + 1) / (p.sum((2, 3)) + y.sum((2, 3)) + 1)).mean(0)
+    return ((bce + region) * w).sum() / w.sum()
 
 
 @torch.no_grad()
-def eval_loss(model: UNet, x: torch.Tensor, y: torch.Tensor, batch: int) -> float:
+def eval_loss(model: UNet, x: torch.Tensor, y: torch.Tensor, batch: int, cfg: dict | None = None) -> float:
     model.eval()
-    total = sum(mask_loss(model(xb), yb).item() * len(xb) for xb, yb in zip(x.split(batch), y.split(batch)))
+    total = sum(mask_loss(model(xb), yb, cfg).item() * len(xb) for xb, yb in zip(x.split(batch), y.split(batch)))
     model.train()
     return total / len(x)
 
 
+def make_optimizer(model: UNet, cfg: dict, steps_per_epoch: int):
+    """Return the optimizer and the scheduler. The scheduler steps after each batch."""
+    if cfg.get("optimizer", "adamw") == "sgd":
+        opt = torch.optim.SGD(model.parameters(), lr=cfg["lr"], momentum=0.9, nesterov=True, weight_decay=cfg["weight_decay"])
+    else:
+        opt = torch.optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
+    if cfg.get("scheduler", "onecycle") == "restarts":
+        # Each cycle ends with a small step size (lr), so the checkpoint at the end of each cycle is a good model.
+        sched = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(opt, cfg["restart_epochs"] * steps_per_epoch)
+    else:
+        sched = torch.optim.lr_scheduler.OneCycleLR(opt, cfg["lr"], total_steps=cfg["epochs"] * steps_per_epoch)
+    return opt, sched
+
+
 def train(inputs: np.ndarray, masks: np.ndarray, cfg: dict, device: str, tune: tuple | None = None) -> UNet:
-    """Train the UNet. With tune = (inputs, masks), also record the loss on the tune part after each epoch."""
+    """Train the UNet. With tune = (inputs, masks), also record the loss on the tune part after each epoch.
+
+    With checkpoint_every, model.checkpoints has the weights (on the CPU) after each n-th epoch and after the last epoch.
+    With ema, the tune loss and the checkpoints use an exponential average of the weights (EMA).
+    """
     torch.manual_seed(cfg["seed"])
     x, y = torch.from_numpy(inputs).to(device), torch.from_numpy(masks).to(device)
     model = UNet(cfg["width"], inputs.shape[1] - 3).to(device)
-    opt = torch.optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     steps_per_epoch = -(-len(x) // cfg["batch"])
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, cfg["lr"], total_steps=cfg["epochs"] * steps_per_epoch)
+    opt, sched = make_optimizer(model, cfg, steps_per_epoch)
+    amp = bool(cfg.get("amp")) and device.startswith("cuda")
+    scaler = torch.amp.GradScaler(enabled=amp)
+    ema = None
+    if cfg.get("ema"):
+        ema = torch.optim.swa_utils.AveragedModel(
+            model, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(cfg["ema"]), use_buffers=True)
+    final = (lambda: ema.module) if ema is not None else (lambda: model)
     gen = torch.Generator().manual_seed(cfg["seed"])
     model.train()
-    model.losses, model.tune_losses = [], []
+    model.losses, model.tune_losses, model.checkpoints = [], [], {}
     if tune is not None:
         xt, yt = (torch.from_numpy(a).to(device) for a in tune)
     best_loss, best_state = float("inf"), None
+    every = cfg.get("checkpoint_every")
     for epoch in range(cfg["epochs"]):
         order = torch.randperm(len(x), generator=gen)
         total = 0.0
         for idx in order.split(cfg["batch"]):
             k = int(torch.randint(8, (1,), generator=gen))
             xb, yb = dihedral(x[idx], k), dihedral(y[idx], k)
-            loss = mask_loss(model(xb), yb)
+            with torch.autocast("cuda", dtype=torch.float16, enabled=amp):
+                logits = model(xb)
+            loss = mask_loss(logits, yb, cfg)
             opt.zero_grad()
-            loss.backward()
-            opt.step()
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
             sched.step()
+            if ema is not None:
+                ema.update_parameters(model)
             total += loss.item() * len(idx)
         model.losses.append(total / len(x))
-        model.tune_losses.append(eval_loss(model, xt, yt, cfg["batch"]) if tune is not None else np.nan)
-        if epoch % 10 == 0 or epoch == cfg["epochs"] - 1:
-            print(f"epoch {epoch} loss {model.losses[-1]:.4f} tune loss {model.tune_losses[-1]:.4f}", flush=True)
+        model.tune_losses.append(eval_loss(final(), xt, yt, cfg["batch"], cfg) if tune is not None else np.nan)
+        print(f"epoch {epoch} loss {model.losses[-1]:.4f} tune loss {model.tune_losses[-1]:.4f}", flush=True)
+        if every and ((epoch + 1) % every == 0 or epoch == cfg["epochs"] - 1):
+            model.checkpoints[epoch] = {k: v.detach().cpu().clone() for k, v in final().state_dict().items()}
         if cfg.get("best_epoch") and model.tune_losses[-1] < best_loss:
             best_loss, model.best_epoch = model.tune_losses[-1], epoch
-            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            best_state = {k: v.detach().clone() for k, v in final().state_dict().items()}
     if best_state is not None:
         # The tune loss increases after some epochs (overfit), so keep the weights of the best epoch.
         model.load_state_dict(best_state)
         print(f"best epoch {model.best_epoch} tune loss {best_loss:.4f}", flush=True)
+    elif ema is not None:
+        model.load_state_dict(ema.module.state_dict())
     return model.eval()
 
 
@@ -250,9 +308,11 @@ def mask_iou(probs: np.ndarray, masks: np.ndarray) -> float:
     return float((inter / union).mean())
 
 
-def run_experiment(cfg: dict) -> dict:
+def run_experiment(cfg: dict, device: str | None = None) -> dict:
     """Train on the train part without a tune part, tune on the tune part, score val, predict the test set."""
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    if device.startswith("cuda"):
+        torch.cuda.set_device(device)
     out_dir = output_dir() / cfg["codename"]
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -277,6 +337,23 @@ def run_experiment(cfg: dict) -> dict:
         out_dir / "train_log.csv", index=False)
 
     tune_labels = labels[is_tune].reset_index(drop=True)
+    if unet.checkpoints:
+        # The tune loss does not follow the points (unet-v4b had a lower tune loss than unet-v6, but fewer points).
+        # Thus select the checkpoint with the most tune points. The val points are only for the report.
+        val_labels, val_images = eval_set("val")
+        rows, best = [], (-1.0, None)
+        for epoch, state in unet.checkpoints.items():
+            unet.load_state_dict(state)
+            params = tune(tune_labels, analyze(resnet, unet, images[is_tune], cfg, device), np.linspace(*cfg["thresholds"]))
+            val_answers = choose(analyze(resnet, unet, val_images, cfg, device), params["rule"], params["threshold"])
+            rows.append({"epoch": epoch, "tune_loss": unet.tune_losses[epoch], **params,
+                         "val": float(points_array(val_labels[BOX].to_numpy(), val_answers).mean())})
+            print(rows[-1], flush=True)
+            best = max(best, (params["tune_score"], epoch))
+        pd.DataFrame(rows).to_csv(out_dir / "checkpoints.csv", index=False)
+        unet.load_state_dict(unet.checkpoints[best[1]])
+        unet.best_epoch = best[1]
+        torch.save(unet.state_dict(), out_dir / "unet.pt")
     tune_cand = analyze(resnet, unet, images[is_tune], cfg, device)
     params = tune(tune_labels, tune_cand, np.linspace(*cfg["thresholds"]))
     metrics = {"codename": cfg["codename"], **params, "best_epoch": getattr(unet, "best_epoch", None)}

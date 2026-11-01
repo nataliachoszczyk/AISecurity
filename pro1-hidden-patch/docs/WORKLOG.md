@@ -145,3 +145,17 @@
   - On the test set, unet-v6 answers 0,0,0,0 for 23.8% of the images (unet-v4b: 27.0%, expected: approximately 20%).
   - JPEG quality 80-88: 24.8% of 0,0,0,0 answers (unet-v4b: 29.9%). The gap between the two JPEG bands is now small.
 - Decision: unet-v6 is a clear improvement (+0.024 on val, better 0,0,0,0 rates on the low JPEG quality). The submission `submission_unet-v6.csv` is ready.
+- New options in `src/unet.py` for the unet-v7 runs:
+  - `amp`: training in fp16 (gen-speed: approximately 3.6 times faster than fp32).
+  - `ema`: an exponential average of the weights. The tune loss and the checkpoints use these weights.
+  - `checkpoint_every`: a checkpoint after each n-th epoch. At the end, the checkpoint with the most tune points wins. `checkpoints.csv` has the tune and val points of each checkpoint.
+  - `loss: lovasz`: BCE plus the Lovasz hinge loss, a surrogate of the mask IoU. `patch_weight` gives more weight to the patch channel.
+  - `scheduler: restarts` (cosine restarts after `restart_epochs`) and `optimizer: sgd` (Nesterov, momentum 0.9).
+  - `run_experiment()` gets a device, so one job trains two variants at the same time, one on each GPU.
+- unet-v6 analysis: the tune loss stops at approximately 0.82 after epoch 25. The train loss is still 0.585, thus a larger UNet can help.
+- unet-v4b had a lower minimum tune loss than unet-v6 (0.782 against 0.805), but fewer val points. Thus the selection of the epoch now uses the tune points.
+- Jobs `2026-11-01_16_unet-v7ab` and `2026-11-01_17_unet-v7cd`. All four variants use width 64, 100 epochs, fp16, EMA and checkpoints:
+  - unet-v7a: AdamW, one cycle, BCE plus Dice (the base).
+  - unet-v7b: the Lovasz loss and the weight 2 on the patch channel.
+  - unet-v7c: cosine restarts after each 25 epochs.
+  - unet-v7d: SGD.
