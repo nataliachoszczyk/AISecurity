@@ -24,8 +24,8 @@ Important behavior:
 - If a kernel fails (status ERROR), Kaggle deletes its complete output. Hours of results can be lost.
 - The CLI cannot stop a kernel. Only the web page can cancel it.
 - The CLI does not give the version ID of a run. Thus use one kernel (notebook) for each job, not many versions of one kernel.
-- `kaggle kernels logs -f <kernel id>` shows the live log. The output of child processes is sometimes not in it.
-- Use `kaggle kernels status <kernel id>` for the state: QUEUED, RUNNING, COMPLETE, ERROR or CANCEL.
+- `kaggle kernels logs -f <user>/<project>-<job name>` shows the live log. The output of child processes is sometimes not in it.
+- Use `kaggle kernels status <user>/<project>-<job name>` for the state: QUEUED, RUNNING, COMPLETE, ERROR or CANCEL.
 
 ## 2. Repository structure
 
@@ -104,7 +104,7 @@ Clone into `/tmp`, not into `/kaggle/working`. Otherwise the clone becomes a par
 ### Data
 
 - Keep the data in a private Kaggle dataset. Upload the original zip as one file, not thousands of small files. Share the dataset with the team.
-- The output of one kernel can be the input of another kernel: `"kernel_sources": ["<user>/<kernel slug>"]`. Thus a data set or model weights from one job go to the next job without a download.
+- The output of one kernel can be the input of another kernel: `"kernel_sources": ["<user>/<project>-<job name>"]`. Thus a data set or model weights from one job go to the next job without a download.
 - The path under `/kaggle/input` can change. Find files with a recursive search, for example `Path("/kaggle/input").rglob("val.npy")`.
 - To make a dataset from a kernel output, use the page of the kernel: Output, New Dataset. Kaggle extracts a zip to a folder with the name of the zip. If the output also has a folder with this name, the creation fails ("Directory already exists"). Thus give a zip a name like `<codename>-set.zip`.
 
@@ -222,7 +222,7 @@ For a CPU job, use `multiprocessing.Pool(4)` for the 4 cores.
 If two GPU sessions are active, the push fails. This loop tries again until a slot is free, and then follows the job:
 
 ```bash
-until out=$(kaggle kernels push -p jobs/runs/<job folder> 2>&1); echo "$(date +%H:%M) $out" | tail -1; echo "$out" | grep -q "successfully pushed"; do sleep 90; done; bash jobs/wait.sh <user>/<kernel slug> "<job name>"
+until out=$(kaggle kernels push -p jobs/runs/YYYY-MM-DD_NN_<job name> 2>&1); echo "$(date +%H:%M) $out" | tail -1; echo "$out" | grep -q "successfully pushed"; do sleep 90; done; bash jobs/wait.sh <user>/<project>-<job name> <job name>
 ```
 
 ### `jobs/wait.sh`
@@ -257,11 +257,11 @@ done
 
 The path to the `kaggle` command assumes a `.venv` two levels above `jobs/`. Change it for a different structure.
 
-Example: the job folder `jobs/runs/2026-11-01_18_unet-v8/` has the kernel `myuser/myproject-unet-v8` and the row `unet-v8` in `JOBS.md`.
+The job folder `jobs/runs/YYYY-MM-DD_NN_<job name>/` has the kernel `<user>/<project>-<job name>` and the row `<job name>` in `JOBS.md`. The call:
 
 ```bash
 # From the project folder, after the push of the kernel:
-bash jobs/wait.sh myuser/myproject-unet-v8 unet-v8
+bash jobs/wait.sh <user>/<project>-<job name> <job name>
 ```
 
 Output: one line for each status change. The last line is the final status from Kaggle.
@@ -269,7 +269,7 @@ Output: one line for each status change. The last line is the final status from 
 ```
 13:48 running
 18:52 complete
-myuser/myproject-unet-v8 has status "KernelWorkerStatus.COMPLETE"
+<user>/<project>-<job name> has status "KernelWorkerStatus.COMPLETE"
 ```
 
 Run it as a background task, because it waits until the kernel stops (minutes or hours).
@@ -291,11 +291,11 @@ Run it as a background task, because it waits until the kernel stops (minutes or
 
 ## 7. Outputs
 
-1. List the files and their sizes: `kaggle kernels files <kernel id>`.
+1. List the files and their sizes: `kaggle kernels files <user>/<project>-<job name>`.
 2. Download only the small files into the output folder of the job:
 
    ```bash
-   kaggle kernels output <kernel id> -p jobs/runs/<job folder>/output --file-pattern '(json|csv|png)$'
+   kaggle kernels output <user>/<project>-<job name> -p jobs/runs/YYYY-MM-DD_NN_<job name>/output --file-pattern '(json|csv|png)$'
    ```
 
    The pattern is a regular expression for the complete path. Do not start it with `^`.
