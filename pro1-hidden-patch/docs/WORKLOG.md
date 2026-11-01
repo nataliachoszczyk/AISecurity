@@ -193,3 +193,4 @@
   - The ensembles are better on clean images (0.94 against 0.90), but a little worse on the attacks. The total is the same as unet-v7d.
 - Decision: no submission of an ensemble. The mean of the masks makes them smoother, but the variants make similar errors.
 - Added `KAGGLE.md` in the root folder of the repository: the method for Kaggle jobs, for all projects.
+- `jobs/JOBS.md`: the column Job now has the job name of the folder (for example `unet-v7ab`). `wait.sh` gets this name.

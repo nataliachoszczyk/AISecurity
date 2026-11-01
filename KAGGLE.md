@@ -2,7 +2,7 @@
 
 This document describes a method to run experiments with models on Kaggle from a local repository. It is a collection of rules and lessons from real projects. A project can use only the parts that it needs, and change them for its own work.
 
-The local machine writes the code and keeps the records. Kaggle does the heavy computation. Git connects the two.
+The local machine has the code and the records. Kaggle does the heavy computation. Git connects the two.
 
 ## 1. Platform facts
 
@@ -35,19 +35,31 @@ Important behavior:
   jobs/
     JOBS.md               the list of all jobs and their status
     wait.sh               follows one kernel and writes its status into JOBS.md
-    YYYY-MM-DD_NN_<name>/ one folder for each job (NN gives the order on one day)
+    YYYY-MM-DD_NN_<job>/  one folder for each job (NN gives the order on one day)
       run.py              the script that Kaggle runs
       kernel-metadata.json
       <codename>.yaml     one config for each experiment of the job
       output/             the small results, with the same paths as /kaggle/working/
         <codename>/       metrics.json, report_*.csv, train_log.csv, ...
   submissions/            submission files (not in git)
-  docs/
-    RESULTS.md            one row for each method
-    WORKLOG.md            the log of all steps and decisions
 ```
 
-Rules:
+### Names
+
+There are two names, and each name is the same in all places:
+
+| Name | Where it occurs |
+|---|---|
+| Job name, for example `unet-v7ab` | The end of the job folder name (`2026-11-01_16_unet-v7ab`), the kernel id (`<user>/<project>-unet-v7ab`), the column Job in `JOBS.md`, the second argument of `wait.sh`. |
+| Codename, for example `unet-v7a` | The config file (`unet-v7a.yaml`), the output folder (`output/unet-v7a/`), the files of the run (`submission_unet-v7a.csv`), and a table of results, if the project has one. |
+
+- Each name is unique in the project. A search for a name finds all files of this job or experiment.
+- Variants of one idea get letters: `unet-v7a`, `unet-v7b`, `unet-v7c`, `unet-v7d`.
+- The job name is the common part of its codenames plus their letters. The job `unet-v7ab` runs `unet-v7a` and `unet-v7b`, and the job `unet-v7cd` runs `unet-v7c` and `unet-v7d`.
+- If a job has only one experiment, its codename is the job name.
+- Use only lowercase letters, digits and hyphens. Kaggle makes the kernel slug from the title, and other characters change.
+
+### Rules
 
 - A job is one Kaggle kernel. A job can run more than one experiment (codename), for example one on each GPU.
 - The config of an experiment is in the folder of the job that runs it. There is no separate folder for configs.
@@ -300,35 +312,24 @@ Status values: to run, waiting for another job, queued, running, complete, faile
 
 | Date | Job | Folder | Link | Comment | Status |
 |---|---|---|---|---|---|
-| 2026-11-01 | unet v6 | `2026-11-01_15_unet-v6` | [bumas-p1-unet-v6](https://www.kaggle.com/code/<user>/bumas-p1-unet-v6) | unet-v6: the UNet on the real and the generated images. Val 0.637. | complete |
+| 2026-11-01 | unet-v6 | `2026-11-01_15_unet-v6` | [bumas-p1-unet-v6](https://www.kaggle.com/code/<user>/bumas-p1-unet-v6) | The UNet on the real and the generated images. Val 0.637. | complete |
 ```
 
 - The column Job is the name that `wait.sh` gets as its second argument.
 - The status cell has one word only. A result in this cell stops `wait.sh`, because its pattern does not match.
-- A new version of a job (after an error) gets a note in the comment, for example "Version 1: out of memory on GPU 0".
+- Each job has one row. A new version of the job (for example after an error) uses the same row and gets a note in the comment, for example "Version 1: out of memory on GPU 0". `wait.sh` changes all rows with the job name, so a second row of the same job also changes.
 
-### `docs/RESULTS.md`
+### A table of results (optional)
 
-One row for each method that is a candidate for the leaderboard:
+Some projects need a table that compares the methods, for example for a leaderboard. The columns depend on the project, so decide them at the start of the project. If the project has such a table, these rules help:
 
-```markdown
-| Date | Codename | Job | Description | Train | Val | Test (leaderboard) |
-|---|---|---|---|---|---|---|
-| 2026-11-01 | unet-v7d | `2026-11-01_17_unet-v7cd` | unet-v6 with width 64, 100 epochs, fp16, EMA weights and SGD. | 0.665 | 0.663 | pending |
-```
-
-- Write the complete row as soon as the results are available, before the submission. The test score comes later.
-- Write "pending" only for a score that does not exist yet. Do not leave a cell empty when the value is known.
-- The column Job gives the folder with the config and the results.
-- Text above the table tells what each column measures (for example which data gave the Train score).
-
-### `docs/WORKLOG.md`
-
-After each step, add an entry with the date: what changed, the results, and the decision with its reason.
+- Each row has the codename and the job folder. Then the config and the results of a row are easy to find.
+- Write a row as soon as its results are available. Write "pending" only for a value that does not exist yet.
+- Text above the table tells what each column measures.
 
 ## 9. Experiment method
 
-- **Codenames.** Each experiment has a codename with a version, for example `unet-v7a`. Variants of one idea get letters.
+- **Codenames.** Each experiment has a codename with a version, for example `unet-v7a`. Variants of one idea get letters (section 2).
 - **One change for each variant.** A group of variants has a common base, and each variant changes one thing. Then the difference shows the effect of this change.
 - **Split.** Keep a fixed validation split in a file. Keep a small tune part of the train data for thresholds and for the selection of the checkpoint. Use the validation set only for decisions.
 - **Checkpoints.** Train longer and keep checkpoints (for example after each 5 epochs, in CPU memory). At the end, score each checkpoint with the real metric on the tune part, and keep the best. The loss does not always follow the metric.
