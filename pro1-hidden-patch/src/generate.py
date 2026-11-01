@@ -323,6 +323,8 @@ def run_generation(cfg: dict) -> None:
             plot_examples(labels, images.astype(np.float32) / 255).savefig(out_dir / "examples.png", dpi=80, bbox_inches="tight")
             score_saliency(labels, images.astype(np.float32) / 255, cfg).to_csv(out_dir / "report_saliency-v1_gen_val.csv", index=False)
             check_strength(labels, cfg.get("max_strength_gap", 4.0))
+            # gen-v4 version 1: the cache of the saliency check kept 12 GB on GPU 0, so the train shard 0 failed.
+            torch.cuda.empty_cache()
 
     # One zip file for the Kaggle dataset: Output -> New Dataset on the notebook page.
     with zipfile.ZipFile(output_dir() / f"{cfg['codename']}.zip", "w", zipfile.ZIP_DEFLATED) as z:

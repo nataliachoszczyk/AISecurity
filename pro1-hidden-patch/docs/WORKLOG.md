@@ -125,3 +125,10 @@
 - unet-v5 (unet-v4b plus 24 candidates from the integrated gradients map): val 0.592 (unet-v4b 0.613). Clean images: 0.86 (unet-v4b 0.96). The extra candidates give boxes on clean images. Thus this idea does not help.
 - unet-v4b and unet-v5 had different best epochs (59 and 55) with the same seed. The GPU training is not deterministic, so a difference of approximately 0.01-0.02 on val can be random.
 - Prepared unet-v6 (job `2026-11-01_15_unet-v6`): unet-v4b on the real train images plus the generated train set, 40 epochs. It needs the Kaggle dataset `jankombajn/bumas-p1-gen` from the output of gen-v4.
+- gen-v4 version 1 failed after 2.5 hours. The output of a failed Kaggle run is lost.
+  - The generated val set was complete: 1100 images. saliency-v1 on it: 0.411 (JPEG 80-89: 0.383, JPEG 90-95: 0.448).
+  - The check of the attack strength passed (medians 8-12/255, task data 8-10/255).
+  - The train shard on GPU 1 was complete: 15514 images from 26240 jobs (59%).
+  - The train shard on GPU 0 failed immediately with "CUDA out of memory". The main process kept 12 GB of cache on GPU 0 after the saliency check.
+- `run_generation()` now empties the CUDA cache after the val checks. gen-v4 version 2 runs with this fix.
+- unet-v6 now reads the output of the gen-v4 notebook (`kernel_sources`), not a Kaggle dataset.

@@ -8,7 +8,7 @@
   "enable_gpu": true,
   "enable_internet": true,
   "machine_shape": "NvidiaTeslaT4",
-  "dataset_sources": ["jankombajn/bumas-p1-hidden-patch", "jankombajn/bumas-p1-gen"],
+  "dataset_sources": ["jankombajn/bumas-p1-hidden-patch"],
   "competition_sources": [],
-  "kernel_sources": []
+  "kernel_sources": ["jankombajn/bumas-p1-gen-v4"]
 }
