@@ -195,3 +195,4 @@
 - Added `KAGGLE.md` in the root folder of the repository: the method for Kaggle jobs, for all projects.
 - `jobs/JOBS.md`: the column Job now has the job name of the folder (for example `unet-v7ab`). `wait.sh` gets this name.
 - `jobs/JOBS.md`: the three rows of the smoke job (versions 1-3) are now one row. Rule: one job folder has one row.
+- Moved the job folders to `jobs/runs/`. Thus `jobs/` shows only `JOBS.md`, `wait.sh` and `runs/`.

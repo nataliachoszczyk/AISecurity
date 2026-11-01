@@ -28,8 +28,8 @@ kaggle.json
 **/submissions/*.csv
 
 # Kaggle outputs: only small results go into git. Images can show task data, and the repository is public.
-**/jobs/*/output/**/*.npy
-**/jobs/*/output/**/*.npz
-**/jobs/*/output/**/*.png
-**/jobs/*/output/**/*.log
-**/jobs/*/output/**/submission_*.csv
+**/jobs/runs/*/output/**/*.npy
+**/jobs/runs/*/output/**/*.npz
+**/jobs/runs/*/output/**/*.png
+**/jobs/runs/*/output/**/*.log
+**/jobs/runs/*/output/**/submission_*.csv

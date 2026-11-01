@@ -35,12 +35,13 @@ Important behavior:
   jobs/
     JOBS.md               the list of all jobs and their status
     wait.sh               follows one kernel and writes its status into JOBS.md
-    YYYY-MM-DD_NN_<job>/  one folder for each job (NN gives the order on one day)
-      run.py              the script that Kaggle runs
-      kernel-metadata.json
-      <codename>.yaml     one config for each experiment of the job
-      output/             the small results, with the same paths as /kaggle/working/
-        <codename>/       metrics.json, report_*.csv, train_log.csv, ...
+    runs/
+      YYYY-MM-DD_NN_<job>/  one folder for each job (NN gives the order on one day)
+        run.py              the script that Kaggle runs
+        kernel-metadata.json
+        <codename>.yaml     one config for each experiment of the job
+        output/             the small results, with the same paths as /kaggle/working/
+          <codename>/       metrics.json, report_*.csv, train_log.csv, ...
   submissions/            submission files (not in git)
 ```
 
@@ -50,7 +51,7 @@ The job folder `YYYY-MM-DD_NN_<job name>` identifies a job. One job folder is on
 
 | Name | Where it occurs |
 |---|---|
-| Job folder, for example `2026-11-01_16_unet-v7ab` | The folder in `jobs/` and the column Folder in `JOBS.md`. |
+| Job folder, for example `2026-11-01_16_unet-v7ab` | The folder in `jobs/runs/` and the column Folder in `JOBS.md`. |
 | Job name: the last part of the job folder, for example `unet-v7ab` | The kernel id (`<user>/<project>-unet-v7ab`), the column Job in `JOBS.md`, the second argument of `wait.sh`. |
 | Codename, for example `unet-v7a` | The config file (`unet-v7a.yaml`), the output folder (`output/unet-v7a/`), the files of the run (`submission_unet-v7a.csv`), and a table of results, if the project has one. |
 
@@ -66,15 +67,16 @@ The job folder `YYYY-MM-DD_NN_<job name>` identifies a job. One job folder is on
 - A job is one Kaggle kernel. A job can run more than one experiment (codename), for example one on each GPU.
 - The config of an experiment is in the folder of the job that runs it. There is no separate folder for configs.
 - The folder of a job does not change after the start. A new variant gets a new folder.
+- The job folders are in `jobs/runs/`. Thus `jobs/` shows only `JOBS.md`, `wait.sh` and `runs/`, also when there are many jobs.
 - `output/` keeps only small files. Data, model weights and caches stay on Kaggle.
 
 A function finds a config from its codename:
 
 ```python
-JOBS_DIR = PROJECT_DIR / "jobs"
+RUNS_DIR = PROJECT_DIR / "jobs" / "runs"
 
 def load_config(codename: str) -> dict:
-    matches = sorted(JOBS_DIR.glob(f"*/{codename}.yaml"))
+    matches = sorted(RUNS_DIR.glob(f"*/{codename}.yaml"))
     if len(matches) != 1:
         raise FileNotFoundError(f"need exactly one config for {codename}, found {matches}")
     cfg = yaml.safe_load(matches[0].read_text())
@@ -86,11 +88,11 @@ Lines for `.gitignore`. Images can show the task data, and a public repository m
 
 ```
 **/submissions/*.csv
-**/jobs/*/output/**/*.npy
-**/jobs/*/output/**/*.npz
-**/jobs/*/output/**/*.png
-**/jobs/*/output/**/*.log
-**/jobs/*/output/**/submission_*.csv
+**/jobs/runs/*/output/**/*.npy
+**/jobs/runs/*/output/**/*.npz
+**/jobs/runs/*/output/**/*.png
+**/jobs/runs/*/output/**/*.log
+**/jobs/runs/*/output/**/submission_*.csv
 *.pt
 *.zip
 ```
@@ -237,7 +239,7 @@ For a CPU job, use `multiprocessing.Pool(4)` for the 4 cores.
 If two GPU sessions are active, the push fails. This loop tries again until a slot is free, and then follows the job:
 
 ```bash
-until out=$(kaggle kernels push -p jobs/<job folder> 2>&1); echo "$(date +%H:%M) $out" | tail -1; echo "$out" | grep -q "successfully pushed"; do sleep 90; done; bash jobs/wait.sh <user>/<kernel slug> "<job name>"
+until out=$(kaggle kernels push -p jobs/runs/<job folder> 2>&1); echo "$(date +%H:%M) $out" | tail -1; echo "$out" | grep -q "successfully pushed"; do sleep 90; done; bash jobs/wait.sh <user>/<kernel slug> "<job name>"
 ```
 
 ### `jobs/wait.sh`
@@ -293,7 +295,7 @@ The path to the `kaggle` command assumes a `.venv` two levels above `jobs/`. Cha
 2. Download only the small files into the output folder of the job:
 
    ```bash
-   kaggle kernels output <kernel id> -p jobs/<job folder>/output --file-pattern '(json|csv|png)$'
+   kaggle kernels output <kernel id> -p jobs/runs/<job folder>/output --file-pattern '(json|csv|png)$'
    ```
 
    The pattern is a regular expression for the complete path. Do not start it with `^`.

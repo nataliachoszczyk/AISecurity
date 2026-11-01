@@ -2,15 +2,15 @@
 
 ## How to run a job
 
-1. Make a new folder `jobs/YYYY-MM-DD_NN_<name>` (NN gives the order on one day). Put `run.py`, `kernel-metadata.json` and one `<codename>.yaml` for each codename of the job into it. Copy them from the last job.
+1. Make a new folder `jobs/runs/YYYY-MM-DD_NN_<job name>` (NN gives the order on one day). Put `run.py`, `kernel-metadata.json` and one `<codename>.yaml` for each codename of the job into it. Copy them from the last job.
 2. Use one Kaggle notebook for each experiment: the kernel id is `<kaggle user>/bumas-p1-<codename>`. Then the link always shows the correct run. The Kaggle API does not give the version ID.
 3. On a different Kaggle account, change the user in the kernel id. The account needs phone verification (for GPU and internet) and access to the dataset `jankombajn/bumas-p1-hidden-patch`. Do not upload copies of the data.
 4. Settings in `kernel-metadata.json`: `"machine_shape": "NvidiaTeslaT4"` (2x T4), `"enable_internet": true`. The script clones the branch `pro1`, so push the code first.
 5. First run on a new account: run the smoke test (`2026-10-31_01_smoke`).
-6. Push with `kaggle kernels push -p <folder>`. Then run `bash jobs/wait.sh <kernel id> <job name>`. The job name is the end of the folder name. It writes each status change into the table below.
-7. Download only small outputs: `kaggle kernels output <kernel id> -p <job folder>/output --file-pattern '(json|csv|png)$'`. The folder `output/` has the same paths as `/kaggle/working/`. Move `submission_*.csv` to `submissions/`. Do not download `.npy`, `.zip` or `.pt` files.
+6. Push with `kaggle kernels push -p jobs/runs/<job folder>`. Then run `bash jobs/wait.sh <kernel id> <job name>`. The job name is the end of the folder name. It writes each status change into the table below.
+7. Download only small outputs: `kaggle kernels output <kernel id> -p jobs/runs/<job folder>/output --file-pattern '(json|csv|png)$'`. The folder `output/` has the same paths as `/kaggle/working/`. Move `submission_*.csv` to `submissions/`. Do not download `.npy`, `.zip` or `.pt` files.
 
-One folder in `jobs/` has one row. A new version of a job uses the same row and gets a note in the comment.
+One folder in `jobs/runs/` has one row. A new version of a job uses the same row and gets a note in the comment.
 
 Status values: to run, waiting for another job, queued, running, complete, failed, cancelled. The status cell has only one of these values, because `wait.sh` changes it. Put results into the comment.
 

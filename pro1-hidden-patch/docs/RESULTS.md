@@ -1,6 +1,6 @@
 # Results
 
-This table shows the methods for the leaderboard. A method gets its row before the submission; the test score follows later. The results of all runs are in `jobs/<job folder>/output/<codename>/` and in `jobs/JOBS.md`. The split is `splits/split.csv` (4500 train, 500 val, seed 0). Val mean is the mean of Val and Val flip. Job is the folder in `jobs/` with the config (`<codename>.yaml`) and the results.
+This table shows the methods for the leaderboard. A method gets its row before the submission; the test score follows later. The results of all runs are in `jobs/runs/<job folder>/output/<codename>/` and in `jobs/JOBS.md`. The split is `splits/split.csv` (4500 train, 500 val, seed 0). Val mean is the mean of Val and Val flip. Job is the folder in `jobs/runs/` with the config (`<codename>.yaml`) and the results.
 
 Train gives the points on the train images that selected the thresholds. For saliency-v1, these are all 4500 train images. For a UNet, these are the 450 images of the tune part. The UNet does not train on them.
 
