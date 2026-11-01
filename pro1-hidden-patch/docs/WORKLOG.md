@@ -159,3 +159,5 @@
   - unet-v7b: the Lovasz loss and the weight 2 on the patch channel.
   - unet-v7c: cosine restarts after each 25 epochs.
   - unet-v7d: SGD.
+- unet-v6 on the leaderboard: 0.6212 (unet-v4b: 0.5590). This is the first place (the next team has 0.6024). 1188 of 5000 test answers are 0,0,0,0.
+- The public half has 2500 images. With a standard deviation of approximately 0.4 for the points of one image, the standard error is approximately 0.008.
