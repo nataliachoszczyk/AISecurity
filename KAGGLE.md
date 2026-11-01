@@ -83,12 +83,11 @@ def load_config(codename: str) -> dict:
     return cfg
 ```
 
-Lines for `.gitignore`. Images can show the data of the project, and a public repository must not show them:
+Lines for `.gitignore`. They keep data, model weights and logs out of git:
 
 ```
 **/jobs/runs/*/output/**/*.npy
 **/jobs/runs/*/output/**/*.npz
-**/jobs/runs/*/output/**/*.png
 **/jobs/runs/*/output/**/*.log
 *.pt
 *.zip
