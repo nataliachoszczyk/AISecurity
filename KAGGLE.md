@@ -257,6 +257,23 @@ done
 
 The path to the `kaggle` command assumes a `.venv` two levels above `jobs/`. Change it for a different structure.
 
+Example: the job folder `jobs/runs/2026-11-01_18_unet-v8/` has the kernel `myuser/myproject-unet-v8` and the row `unet-v8` in `JOBS.md`.
+
+```bash
+# From the project folder, after the push of the kernel:
+bash jobs/wait.sh myuser/myproject-unet-v8 unet-v8
+```
+
+Output: one line for each status change. The last line is the final status from Kaggle.
+
+```
+13:48 running
+18:52 complete
+myuser/myproject-unet-v8 has status "KernelWorkerStatus.COMPLETE"
+```
+
+Run it as a background task, because it waits until the kernel stops (minutes or hours).
+
 ### Rules for the follow-up
 
 - Start `wait.sh` after each push: for a new job and also for a new version of an old job. Without it, the status in `JOBS.md` stays old.
