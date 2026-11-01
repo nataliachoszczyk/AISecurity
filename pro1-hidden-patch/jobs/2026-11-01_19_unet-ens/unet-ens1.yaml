@@ -1,0 +1,24 @@
+# The mean of the masks of unet-v7a, unet-v7c and unet-v7d. No training.
+seed: 0
+tune_fraction: 0.1
+width: 64
+use_ig: true
+ig_steps: 8
+epochs: 100
+batch: 64
+lr: 0.002
+weight_decay: 0.0001
+mask_threshold: 0.5
+min_area: 30
+candidates: 6
+batch_causal: 250
+chunk: 1500
+thresholds: [0.0, 3.0, 61]
+best_epoch: false
+boxes: fit
+fit_offset: 0.3
+generated: true
+amp: true
+ema: 0.999
+checkpoint_every: 5
+ensemble: [unet-v7a, unet-v7c, unet-v7d]

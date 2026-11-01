@@ -157,7 +157,8 @@ def train(inputs: np.ndarray, masks: np.ndarray, cfg: dict, device: str, tune: t
     With checkpoint_every, model.checkpoints has the weights (on the CPU) after each n-th epoch and after the last epoch.
     With ema, the tune loss and the checkpoints use an exponential average of the weights (EMA).
     """
-    torch.manual_seed(cfg["seed"])
+    # train_seed changes only the weights and the order of the images. seed also selects the tune part.
+    torch.manual_seed(cfg.get("train_seed", cfg["seed"]))
     x, y = torch.from_numpy(inputs).to(device), torch.from_numpy(masks).to(device)
     model = UNet(cfg["width"], inputs.shape[1] - 3).to(device)
     steps_per_epoch = -(-len(x) // cfg["batch"])
@@ -169,7 +170,7 @@ def train(inputs: np.ndarray, masks: np.ndarray, cfg: dict, device: str, tune: t
         ema = torch.optim.swa_utils.AveragedModel(
             model, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(cfg["ema"]), use_buffers=True)
     final = (lambda: ema.module) if ema is not None else (lambda: model)
-    gen = torch.Generator().manual_seed(cfg["seed"])
+    gen = torch.Generator().manual_seed(cfg.get("train_seed", cfg["seed"]))
     model.train()
     model.losses, model.tune_losses, model.checkpoints = [], [], {}
     if tune is not None:
@@ -308,6 +309,35 @@ def mask_iou(probs: np.ndarray, masks: np.ndarray) -> float:
     return float((inter / union).mean())
 
 
+class Ensemble(nn.Module):
+    """The mean probability of several trained UNets. forward returns the logit of this mean."""
+
+    def __init__(self, models: list[UNet]):
+        super().__init__()
+        self.models = nn.ModuleList(models)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        p = torch.stack([torch.sigmoid(m(x)) for m in self.models]).mean(0)
+        return torch.logit(p.clamp(1e-6, 1 - 1e-6))
+
+
+def load_ensemble(codenames: list[str], device: str) -> Ensemble:
+    """Load the unet.pt files of earlier runs from /kaggle/input (outputs of their notebooks)."""
+    from .config import load_config
+    from .paths import KAGGLE_INPUT
+    models = []
+    for codename in codenames:
+        found = sorted(KAGGLE_INPUT.rglob(f"{codename}/unet.pt"))
+        assert found, f"no unet.pt of {codename} in /kaggle/input"
+        cfg = load_config(codename)
+        state = torch.load(found[0], map_location=device)
+        model = UNet(cfg["width"], state["down.0.0.weight"].shape[1] - 6)
+        model.load_state_dict(state)
+        models.append(model)
+        print(f"{codename}: {found[0]}", flush=True)
+    return Ensemble(models).to(device).eval()
+
+
 def run_experiment(cfg: dict, device: str | None = None) -> dict:
     """Train on the train part without a tune part, tune on the tune part, score val, predict the test set."""
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -319,25 +349,28 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
     resnet = load_model().to(device).requires_grad_(False)
     labels, images = eval_set("train")
     is_tune = labels.id.isin(tune_ids(cfg["tune_fraction"], cfg["seed"])).to_numpy()
-    inputs = unet_inputs(resnet, images[~is_tune], cfg, device)
-    masks = target_masks(labels[~is_tune])
-    if cfg.get("generated"):
-        gen_labels, gen_images = load_set(generated_dir() / "train")
-        # Data leakage checks: the bases of the generated train set must come only from the train part without tune.
-        assert gen_labels.base.isin(labels.id[~is_tune]).all(), "a generated image uses a tune or val image as its base"
-        inputs = np.concatenate([inputs, unet_inputs(resnet, gen_images, cfg, device)])
-        masks = np.concatenate([masks, target_masks(gen_labels)])
-        del gen_images
-        print(f"train images: {len(inputs)} ({len(gen_labels)} generated)", flush=True)
-    tune_data = (unet_inputs(resnet, images[is_tune], cfg, device), target_masks(labels[is_tune]))
-    unet = train(inputs, masks, cfg, device, tune_data)
-    del inputs, masks
-    torch.save(unet.state_dict(), out_dir / "unet.pt")
-    pd.DataFrame({"epoch": range(len(unet.losses)), "loss": unet.losses, "tune_loss": unet.tune_losses}).to_csv(
-        out_dir / "train_log.csv", index=False)
+    if cfg.get("ensemble"):
+        unet = load_ensemble(cfg["ensemble"], device)
+    else:
+        inputs = unet_inputs(resnet, images[~is_tune], cfg, device)
+        masks = target_masks(labels[~is_tune])
+        if cfg.get("generated"):
+            gen_labels, gen_images = load_set(generated_dir() / "train")
+            # Data leakage checks: the bases of the generated train set must come only from the train part without tune.
+            assert gen_labels.base.isin(labels.id[~is_tune]).all(), "a generated image uses a tune or val image as its base"
+            inputs = np.concatenate([inputs, unet_inputs(resnet, gen_images, cfg, device)])
+            masks = np.concatenate([masks, target_masks(gen_labels)])
+            del gen_images
+            print(f"train images: {len(inputs)} ({len(gen_labels)} generated)", flush=True)
+        tune_data = (unet_inputs(resnet, images[is_tune], cfg, device), target_masks(labels[is_tune]))
+        unet = train(inputs, masks, cfg, device, tune_data)
+        del inputs, masks
+        torch.save(unet.state_dict(), out_dir / "unet.pt")
+        pd.DataFrame({"epoch": range(len(unet.losses)), "loss": unet.losses, "tune_loss": unet.tune_losses}).to_csv(
+            out_dir / "train_log.csv", index=False)
 
     tune_labels = labels[is_tune].reset_index(drop=True)
-    if unet.checkpoints:
+    if getattr(unet, "checkpoints", None):
         # The tune loss does not follow the points (unet-v4b had a lower tune loss than unet-v6, but fewer points).
         # Thus select the checkpoint with the most tune points. The val points are only for the report.
         val_labels, val_images = eval_set("val")

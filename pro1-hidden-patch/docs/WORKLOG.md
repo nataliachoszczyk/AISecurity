@@ -180,3 +180,8 @@
   - The Lovasz loss does not help (unet-v7b is the worst of the four).
   - On the test set, all variants answer 0,0,0,0 for approximately 24% of the images.
 - Decision: unet-v7d is a clear improvement on val (+0.026) and on the generated val set (+0.035). The submission `submission_unet-v7d.csv` is ready.
+- New options in `src/unet.py`:
+  - `ensemble`: a list of codenames. The run loads their `unet.pt` from the notebook outputs and uses the mean mask. It does not train a UNet.
+  - `train_seed`: changes only the start weights and the order of the images. `seed` also selects the tune part, and the generated set needs the tune part of seed 0.
+- Job `2026-11-01_18_unet-v8`: unet-v8a (unet-v7d with 200 epochs) and unet-v8b (the same with train seed 1). unet-v8b shows the effect of the seed.
+- Job `2026-11-01_19_unet-ens`: unet-ens1 (mean of unet-v7a, v7c and v7d) and unet-ens2 (mean of all four unet-v7 variants).
