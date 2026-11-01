@@ -205,3 +205,13 @@
   - The generated val set shows no gain.
 - Decision: submission `submission_unet-v8b.csv`. It has the higher val of the two seeds.
 - Leaderboard: unet-v8b got 0.6501 (unet-v6 0.6212). It answers 0,0,0,0 for 1132 of the 5000 test images (23%).
+- unet-v7d was not sent. unet-v8b has a higher val, so a submission of unet-v7d gives no new information.
+
+### Status at the end of 2026-11-01
+
+- Best submission: unet-v8b, leaderboard 0.6501 (1st place, the next team 0.6024).
+- Work stops at this point. If unet-v8b is still the best result at the end of the week, the project is complete. Then only the README files and the merge into `main` stay.
+- Ideas for more work, if necessary:
+  - Separate thresholds for test images with a JPEG quality below 90, tuned on the generated val set. On the generated val set, unet-v8b gets 0.528 for quality 80-89 and 0.584 for 90-95.
+  - The mean mask of unet-v8a and unet-v8b (two seeds).
+  - 300 epochs. Both unet-v8 runs selected the last epoch.
