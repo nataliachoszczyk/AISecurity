@@ -8,7 +8,7 @@
 4. Settings in `kernel-metadata.json`: `"machine_shape": "NvidiaTeslaT4"` (2x T4), `"enable_internet": true`. The script clones the branch `pro1`, so push the code first.
 5. First run on a new account: run the smoke test (`2026-10-31_01_smoke`).
 6. Push with `kaggle kernels push -p <folder>`. Then run `bash jobs/wait.sh <kernel id> "<job name>"`. It writes each status change into the table below.
-7. Download only small outputs (`kaggle kernels output ... --file-pattern`). Put `metrics.json`, the reports and the train loss into `<job folder>/<codename>/`. Do not commit submission files: the repository is public.
+7. Download only small outputs: `kaggle kernels output <kernel id> -p <job folder>/output --file-pattern '(json|csv|png)$'`. The folder `output/` has the same paths as `/kaggle/working/`. Move `submission_*.csv` to `submissions/`. Do not download `.npy`, `.zip` or `.pt` files.
 
 Status values: to run, waiting for another job, queued, running, complete, failed, cancelled.
 

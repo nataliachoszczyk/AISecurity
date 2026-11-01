@@ -164,3 +164,4 @@
 - The Kaggle dataset from the output of gen-v4 failed: "Directory already exists: gen-v4". Kaggle extracts `gen-v4.zip` to the folder `gen-v4/`, and the output already has this folder. The generator now writes `<codename>-set.zip`. The jobs read gen-v4 from the notebook output.
 - New structure: one folder `jobs/` in place of `kaggle-jobs/` and `configs/`. Each job folder has `run.py`, `kernel-metadata.json`, one `<codename>.yaml` for each codename of the job, and the results in `<codename>/`. `load_config()` finds `jobs/*/<codename>.yaml`.
 - `docs/results.md` now has the column Job (the job folder). The column Train now also has the tune points of the UNet methods.
+- The results of a job are now in `jobs/<job folder>/output/`, with the same paths as `/kaggle/working/`. Only small files are downloaded. The root `.gitignore` keeps images, logs, `.npy` files and submission files of `output/` out of git.
