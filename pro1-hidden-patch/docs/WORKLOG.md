@@ -192,3 +192,4 @@
   - unet-v7d alone: tune 0.665, val 0.663, generated val 0.553.
   - The ensembles are better on clean images (0.94 against 0.90), but a little worse on the attacks. The total is the same as unet-v7d.
 - Decision: no submission of an ensemble. The mean of the masks makes them smoother, but the variants make similar errors.
+- Added `KAGGLE.md` in the root folder of the repository: the method for Kaggle jobs, for all projects.

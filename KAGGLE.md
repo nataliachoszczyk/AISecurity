@@ -1,0 +1,337 @@
+# Experiments on Kaggle
+
+This document describes a method to run experiments with models on Kaggle from a local repository. It is a collection of rules and lessons from real projects. A project can use only the parts that it needs, and change them for its own work.
+
+The local machine writes the code and keeps the records. Kaggle does the heavy computation. Git connects the two.
+
+## 1. Platform facts
+
+| Item | Value |
+|---|---|
+| GPU machine | `"machine_shape": "NvidiaTeslaT4"` gives 2x Tesla T4, 15 GB of memory each. |
+| GPU sessions at the same time | 2 for each account. A third push fails with "Maximum batch GPU session count of 2 reached". |
+| GPU time | A weekly quota (approximately 30 hours). A session counts its hours, not the number of its GPUs. |
+| CPU sessions | 4 cores and approximately 30 GB of RAM. They do not use the GPU quota. |
+| Session limit | 12 hours. |
+| Output folder | `/kaggle/working/`, approximately 20 GB. Only this folder is kept after the session. |
+| Temporary folder | `/kaggle/temp/`. It is deleted after the session. |
+| Input data | `/kaggle/input/<slug>/...`, read-only. |
+| Python | 3.13 (2026). The local environment can differ. Do not use features of one version only. |
+| Account | GPU and internet need a phone verification of the account. Without it, a GPU kernel runs on the CPU and no error occurs. |
+
+Important behavior:
+
+- If a kernel fails (status ERROR), Kaggle deletes its complete output. Hours of results can be lost.
+- The CLI cannot stop a kernel. Only the web page can cancel it.
+- The CLI does not give the version ID of a run. Thus use one kernel (notebook) for each job, not many versions of one kernel.
+- `kaggle kernels logs -f <kernel id>` shows the live log. The output of child processes is sometimes not in it.
+- Use `kaggle kernels status <kernel id>` for the state: QUEUED, RUNNING, COMPLETE, ERROR or CANCEL.
+
+## 2. Repository structure
+
+```
+<project>/
+  src/                    all logic (Python modules)
+  jobs/
+    JOBS.md               the list of all jobs and their status
+    wait.sh               follows one kernel and writes its status into JOBS.md
+    YYYY-MM-DD_NN_<name>/ one folder for each job (NN gives the order on one day)
+      run.py              the script that Kaggle runs
+      kernel-metadata.json
+      <codename>.yaml     one config for each experiment of the job
+      output/             the small results, with the same paths as /kaggle/working/
+        <codename>/       metrics.json, report_*.csv, train_log.csv, ...
+  submissions/            submission files (not in git)
+  docs/
+    RESULTS.md            one row for each method
+    WORKLOG.md            the log of all steps and decisions
+```
+
+Rules:
+
+- A job is one Kaggle kernel. A job can run more than one experiment (codename), for example one on each GPU.
+- The config of an experiment is in the folder of the job that runs it. There is no separate folder for configs.
+- The folder of a job does not change after the start. A new variant gets a new folder.
+- `output/` keeps only small files. Data, model weights and caches stay on Kaggle.
+
+A function finds a config from its codename:
+
+```python
+JOBS_DIR = PROJECT_DIR / "jobs"
+
+def load_config(codename: str) -> dict:
+    matches = sorted(JOBS_DIR.glob(f"*/{codename}.yaml"))
+    if len(matches) != 1:
+        raise FileNotFoundError(f"need exactly one config for {codename}, found {matches}")
+    cfg = yaml.safe_load(matches[0].read_text())
+    cfg["codename"] = codename
+    return cfg
+```
+
+Lines for `.gitignore`. Images can show the task data, and a public repository must not show them:
+
+```
+**/submissions/*.csv
+**/jobs/*/output/**/*.npy
+**/jobs/*/output/**/*.npz
+**/jobs/*/output/**/*.png
+**/jobs/*/output/**/*.log
+**/jobs/*/output/**/submission_*.csv
+*.pt
+*.zip
+```
+
+## 3. Code and data on Kaggle
+
+### Code
+
+The kernel clones the project branch from a public repository, with a sparse checkout of the project folder. Thus every run uses code from git, and the commit hash goes into the log. Push the code before the push of the kernel.
+
+Clone into `/tmp`, not into `/kaggle/working`. Otherwise the clone becomes a part of the output.
+
+### Data
+
+- Keep the data in a private Kaggle dataset. Upload the original zip as one file, not thousands of small files. Share the dataset with the team.
+- The output of one kernel can be the input of another kernel: `"kernel_sources": ["<user>/<kernel slug>"]`. Thus a data set or model weights from one job go to the next job without a download.
+- The path under `/kaggle/input` can change. Find files with a recursive search, for example `Path("/kaggle/input").rglob("val.npy")`.
+- To make a dataset from a kernel output, use the page of the kernel: Output, New Dataset. Kaggle extracts a zip to a folder with the name of the zip. If the output also has a folder with this name, the creation fails ("Directory already exists"). Thus give a zip a name like `<codename>-set.zip`.
+
+### `kernel-metadata.json`
+
+```json
+{
+  "id": "<user>/<project>-<job name>",
+  "title": "<project>-<job name>",
+  "code_file": "run.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": ["<user>/<dataset>"],
+  "competition_sources": [],
+  "kernel_sources": []
+}
+```
+
+For a CPU job, use `"enable_gpu": false` and remove `machine_shape`.
+
+### `run.py` for one experiment on one GPU
+
+```python
+"""<What the job does, in one or two sentences.>"""
+import subprocess
+import sys
+
+REPO = "https://github.com/<owner>/<repository>.git"
+BRANCH = "<project branch>"
+PROJECT = "<project folder>"
+CLONE = "/tmp/repo"  # Not in the output folder, so the clone is not an output.
+CODENAMES = ["<codename>"]
+
+import torch
+
+# A long job on the CPU wastes hours, so stop immediately without a GPU.
+assert torch.cuda.is_available(), "no GPU: check the phone verification of the account"
+
+subprocess.run(["git", "clone", "--depth", "1", "--branch", BRANCH, "--filter=blob:none", "--sparse", REPO, CLONE], check=True)
+subprocess.run(["git", "-C", CLONE, "sparse-checkout", "set", PROJECT], check=True)
+print("commit", subprocess.run(["git", "-C", CLONE, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip())
+sys.path.insert(0, f"{CLONE}/{PROJECT}")
+
+from src.config import load_config
+from src.experiment import run_experiment
+
+for codename in CODENAMES:
+    run_experiment(load_config(codename))
+```
+
+## 4. Use of the two GPUs
+
+A T4 x2 session has two GPUs, and the quota counts the session. A job that uses one GPU wastes half of its cost.
+
+Measurements (ResNet-18 attacks and a small UNet, 64x64 images):
+
+| Setup | Time for each image step |
+|---|---|
+| fp32, 1 GPU | 3.4 ms |
+| fp16 (autocast), 1 GPU | 0.93 ms |
+| fp16, 2 GPUs with `DataParallel` | 1.77 ms (slower than 1 GPU) |
+| fp32, 2 GPUs with `DataParallel` | 8.5 ms |
+
+Conclusions:
+
+- Use fp16 with `torch.autocast` and `GradScaler`. On a T4 it is approximately 3.6 times faster than fp32, with the same results.
+- Do not use `DataParallel` for small models. The copies between the GPUs take more time than the computation.
+- Run one process on each GPU. Each process does its own work: one experiment, or one half of the data (shard).
+
+### `run.py` for two experiments, one on each GPU
+
+```python
+"""Run two experiments at the same time, one on each GPU."""
+import subprocess
+import sys
+
+REPO = "https://github.com/<owner>/<repository>.git"
+BRANCH = "<project branch>"
+PROJECT = "<project folder>"
+CLONE = "/tmp/repo"  # Not in the output folder, so the clone is not an output.
+CODENAMES = ["<codename a>", "<codename b>"]
+
+
+def run(codename: str, gpu: int) -> None:
+    sys.path.insert(0, f"{CLONE}/{PROJECT}")
+    from src.config import load_config
+    from src.experiment import run_experiment
+    run_experiment(load_config(codename), f"cuda:{gpu}")
+
+
+# A new process imports this file again, so the clone and the start must be only in the main process.
+if __name__ == "__main__":
+    import torch
+
+    assert torch.cuda.device_count() == 2, "this job needs 2 GPUs (T4 x2)"
+    subprocess.run(["git", "clone", "--depth", "1", "--branch", BRANCH, "--filter=blob:none", "--sparse", REPO, CLONE], check=True)
+    subprocess.run(["git", "-C", CLONE, "sparse-checkout", "set", PROJECT], check=True)
+    print("commit", subprocess.run(["git", "-C", CLONE, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip())
+    with torch.multiprocessing.get_context("spawn").Pool(2) as pool:
+        pool.starmap(run, [(codename, gpu) for gpu, codename in enumerate(CODENAMES)])
+```
+
+Rules for this pattern:
+
+- Use the `spawn` context. CUDA does not work in a process from `fork`.
+- Put the main code under `if __name__ == "__main__":`. Each new process imports `run.py` again.
+- The experiment function gets the device as an argument, and it calls `torch.cuda.set_device(device)`.
+- Each process writes its results into its own folder, `/kaggle/working/<codename>/`.
+- The main process must not keep GPU memory. If it used the GPU before the start of the pool, call `torch.cuda.empty_cache()`. In one job, the main process kept 12 GB of cache on GPU 0, and the process for GPU 0 failed with "CUDA out of memory".
+- If one process fails, the complete job fails, and Kaggle deletes the output of both experiments. Thus do a smoke test first (section 6).
+- Two jobs with two experiments each give four experiments at the same time.
+- Two processes share the RAM of the session. Each process must stay below approximately half of it.
+
+For a CPU job, use `multiprocessing.Pool(4)` for the 4 cores.
+
+## 5. Start and follow a job
+
+### Start
+
+1. Commit and push the code.
+2. Add a row to `jobs/JOBS.md` with the status `to run`.
+3. Push the kernel and start `wait.sh` for it.
+
+If two GPU sessions are active, the push fails. This loop tries again until a slot is free, and then follows the job:
+
+```bash
+until out=$(kaggle kernels push -p jobs/<job folder> 2>&1); echo "$(date +%H:%M) $out" | tail -1; echo "$out" | grep -q "successfully pushed"; do sleep 90; done; bash jobs/wait.sh <user>/<kernel slug> "<job name>"
+```
+
+### `jobs/wait.sh`
+
+```bash
+#!/usr/bin/env bash
+# Follow a Kaggle kernel until it stops. Write each status change into JOBS.md.
+# Usage: bash wait.sh <owner/kernel-slug> "<job name in the JOBS.md row>"
+DIR="$(dirname "$0")"
+KAGGLE="$DIR/../../.venv/Scripts/kaggle"
+[ -x "$KAGGLE" ] || [ -x "$KAGGLE.exe" ] || KAGGLE="$DIR/../../.venv/bin/kaggle"  # Linux and macOS
+last=""
+while true; do
+  raw=$("$KAGGLE" kernels status "$1" 2>&1)
+  case "$raw" in
+    *QUEUED*) status="queued" ;;
+    *RUNNING*) status="running" ;;
+    *COMPLETE*) status="complete" ;;
+    *ERROR*) status="failed" ;;
+    *CANCEL*) status="cancelled" ;;
+    *) status="$last" ;;
+  esac
+  if [ -n "$status" ] && [ "$status" != "$last" ]; then
+    sed -i "/^| [0-9-]* | $2 |/ s/| [a-z ]* |\$/| $status |/" "$DIR/JOBS.md"
+    echo "$(date +%H:%M) $status"
+    last="$status"
+  fi
+  case "$status" in complete|failed|cancelled) echo "$raw"; exit 0 ;; esac
+  sleep 60
+done
+```
+
+The path to the `kaggle` command assumes a `.venv` two levels above `jobs/`. Change it for a different structure.
+
+### Rules for the follow-up
+
+- Start `wait.sh` after each push: for a new job and also for a new version of an old job. Without it, the status in `JOBS.md` stays old.
+- Use one background task for each job. A tool that waits for a background task gives a notice only when the complete task stops. If one task follows two jobs, the end of the first job stays without a notice until the second job ends.
+- If a `wait.sh` process stops (for example after a move of the folder), start it again.
+- When a job ends, check that its row shows the final status.
+
+## 6. Protect long runs
+
+- **Smoke test.** Before a run of many hours, run the same code path on a few images. Use a CPU kernel, or the local machine if it has enough memory. The test must do all steps, also the final steps (selection, reports, submission). An error at the end of a long run loses all of it.
+- **Early checks.** Put cheap checks at the start. If a check fails, stop the job. Example: after a small part of the data generation, compare the attack strength with the target. If it is wrong, the job stops before the long part.
+- **Deadline.** A long loop gets a deadline (for example 9 hours). After it, no new batch starts, and the job writes its results before the 12-hour limit.
+- **Data leakage checks.** Use `assert` statements to check that no train data goes into the validation data.
+- **No heavy work on the local machine.** The local machine does only small checks. It can stop a process if the memory is low.
+
+## 7. Outputs
+
+1. List the files and their sizes: `kaggle kernels files <kernel id>`.
+2. Download only the small files into the output folder of the job:
+
+   ```bash
+   kaggle kernels output <kernel id> -p jobs/<job folder>/output --file-pattern '(json|csv|png)$'
+   ```
+
+   The pattern is a regular expression for the complete path. Do not start it with `^`.
+3. Move `submission_*.csv` files to `submissions/`.
+4. Delete the downloaded `.log` file if it is not necessary.
+5. Commit the small results.
+
+Write large intermediate data only to `/kaggle/temp/` or to `/kaggle/working/cache/`. Write small results as CSV or JSON.
+
+## 8. Records
+
+### `jobs/JOBS.md`
+
+The file starts with a short procedure (sections 5 and 7), then the table:
+
+```markdown
+Status values: to run, waiting for another job, queued, running, complete, failed, cancelled. The status cell has only one of these values, because `wait.sh` changes it. Put results into the comment.
+
+| Date | Job | Folder | Link | Comment | Status |
+|---|---|---|---|---|---|
+| 2026-11-01 | unet v6 | `2026-11-01_15_unet-v6` | [bumas-p1-unet-v6](https://www.kaggle.com/code/<user>/bumas-p1-unet-v6) | unet-v6: the UNet on the real and the generated images. Val 0.637. | complete |
+```
+
+- The column Job is the name that `wait.sh` gets as its second argument.
+- The status cell has one word only. A result in this cell stops `wait.sh`, because its pattern does not match.
+- A new version of a job (after an error) gets a note in the comment, for example "Version 1: out of memory on GPU 0".
+
+### `docs/RESULTS.md`
+
+One row for each method that is a candidate for the leaderboard:
+
+```markdown
+| Date | Codename | Job | Description | Train | Val | Test (leaderboard) |
+|---|---|---|---|---|---|---|
+| 2026-11-01 | unet-v7d | `2026-11-01_17_unet-v7cd` | unet-v6 with width 64, 100 epochs, fp16, EMA weights and SGD. | 0.665 | 0.663 | pending |
+```
+
+- Write the complete row as soon as the results are available, before the submission. The test score comes later.
+- Write "pending" only for a score that does not exist yet. Do not leave a cell empty when the value is known.
+- The column Job gives the folder with the config and the results.
+- Text above the table tells what each column measures (for example which data gave the Train score).
+
+### `docs/WORKLOG.md`
+
+After each step, add an entry with the date: what changed, the results, and the decision with its reason.
+
+## 9. Experiment method
+
+- **Codenames.** Each experiment has a codename with a version, for example `unet-v7a`. Variants of one idea get letters.
+- **One change for each variant.** A group of variants has a common base, and each variant changes one thing. Then the difference shows the effect of this change.
+- **Split.** Keep a fixed validation split in a file. Keep a small tune part of the train data for thresholds and for the selection of the checkpoint. Use the validation set only for decisions.
+- **Checkpoints.** Train longer and keep checkpoints (for example after each 5 epochs, in CPU memory). At the end, score each checkpoint with the real metric on the tune part, and keep the best. The loss does not always follow the metric.
+- **Noise.** Two runs with the same settings and a different seed show the random difference. A difference smaller than this is not a result. Keep a separate `train_seed` if the main seed also selects the data split.
+- **Leaderboard.** Send a submission only after a clear gain on validation. The public part of the test set is small, so its score has a random error (approximately 0.4 / sqrt(n) for points between 0 and 1).
+- **Data that the train set does not show.** Compare the train data and the test data (for example the JPEG quality). If the test data has a different distribution, generate train data for it and measure this case separately.
