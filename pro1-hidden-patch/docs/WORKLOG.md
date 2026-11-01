@@ -163,7 +163,7 @@
 - The public half has 2500 images. With a standard deviation of approximately 0.4 for the points of one image, the standard error is approximately 0.008.
 - The Kaggle dataset from the output of gen-v4 failed: "Directory already exists: gen-v4". Kaggle extracts `gen-v4.zip` to the folder `gen-v4/`, and the output already has this folder. The generator now writes `<codename>-set.zip`. The jobs read gen-v4 from the notebook output.
 - New structure: one folder `jobs/` in place of `kaggle-jobs/` and `configs/`. Each job folder has `run.py`, `kernel-metadata.json`, one `<codename>.yaml` for each codename of the job, and the results in `<codename>/`. `load_config()` finds `jobs/*/<codename>.yaml`.
-- `docs/results.md` now has the column Job (the job folder). The column Train now also has the tune points of the UNet methods.
+- `docs/RESULTS.md` now has the column Job (the job folder). The column Train now also has the tune points of the UNet methods.
 - The results of a job are now in `jobs/<job folder>/output/`, with the same paths as `/kaggle/working/`. Only small files are downloaded. The root `.gitignore` keeps images, logs, `.npy` files and submission files of `output/` out of git.
 - unet-v7 results (width 64, 100 epochs, fp16, EMA, checkpoint with the most tune points). All four variants are better than unet-v6 (val 0.637):
 
@@ -185,3 +185,4 @@
   - `train_seed`: changes only the start weights and the order of the images. `seed` also selects the tune part, and the generated set needs the tune part of seed 0.
 - Job `2026-11-01_18_unet-v8`: unet-v8a (unet-v7d with 200 epochs) and unet-v8b (the same with train seed 1). unet-v8b shows the effect of the seed.
 - Job `2026-11-01_19_unet-ens`: unet-ens1 (mean of unet-v7a, v7c and v7d) and unet-ens2 (mean of all four unet-v7 variants).
+- Renamed `docs/results.md` to `docs/RESULTS.md`.
