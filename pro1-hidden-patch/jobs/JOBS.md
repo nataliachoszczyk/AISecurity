@@ -2,12 +2,12 @@
 
 ## How to run a job
 
-1. Make a new folder `kaggle-jobs/YYYY-MM-DD_NN_<codename>` (NN gives the order on one day) with `run.py` and `kernel-metadata.json`. Copy them from the last job.
+1. Make a new folder `jobs/YYYY-MM-DD_NN_<name>` (NN gives the order on one day). Put `run.py`, `kernel-metadata.json` and one `<codename>.yaml` for each codename of the job into it. Copy them from the last job.
 2. Use one Kaggle notebook for each experiment: the kernel id is `<kaggle user>/bumas-p1-<codename>`. Then the link always shows the correct run. The Kaggle API does not give the version ID.
 3. On a different Kaggle account, change the user in the kernel id. The account needs phone verification (for GPU and internet) and access to the dataset `jankombajn/bumas-p1-hidden-patch`. Do not upload copies of the data.
 4. Settings in `kernel-metadata.json`: `"machine_shape": "NvidiaTeslaT4"` (2x T4), `"enable_internet": true`. The script clones the branch `pro1`, so push the code first.
 5. First run on a new account: run the smoke test (`2026-10-31_01_smoke`).
-6. Push with `kaggle kernels push -p <folder>`. Then run `bash kaggle-jobs/wait.sh <kernel id> "<job name>"`. It writes each status change into the table below.
+6. Push with `kaggle kernels push -p <folder>`. Then run `bash jobs/wait.sh <kernel id> "<job name>"`. It writes each status change into the table below.
 7. Download only small outputs (`kaggle kernels output ... --file-pattern`). Put `metrics.json`, the reports and the train loss into `<job folder>/<codename>/`. Do not commit submission files: the repository is public.
 
 Status values: to run, waiting for another job, queued, running, complete, failed, cancelled.
@@ -31,5 +31,5 @@ Status values: to run, waiting for another job, queued, running, complete, faile
 | 2026-11-01 | unet v5 | `2026-11-01_13_unet-v5` | [bumas-p1-unet-v5](https://www.kaggle.com/code/jankombajn/bumas-p1-unet-v5) | unet-v5: unet-v4b plus 24 candidates from the integrated gradients map. Val 0.592 (worse than unet-v4b). | complete |
 | 2026-11-01 | jpeg quality | `2026-11-01_14_jpeg-quality` | [bumas-p1-jpeg-quality](https://www.kaggle.com/code/jankombajn/bumas-p1-jpeg-quality) | CPU: estimate the JPEG quality of all train and test images. Test: 20% have quality 80-88, train has only 90-96. | complete |
 | 2026-11-01 | unet v6 | `2026-11-01_15_unet-v6` | [bumas-p1-unet-v6](https://www.kaggle.com/code/jankombajn/bumas-p1-unet-v6) | unet-v6: unet-v4b on the real and the generated train images (the output of gen-v4). | complete. Val 0.637 (unet-v4b 0.613), generated val 0.518. |
-| 2026-11-01 | unet v7ab | `2026-11-01_16_unet-v7ab` | [bumas-p1-unet-v7ab](https://www.kaggle.com/code/jankombajn/bumas-p1-unet-v7ab) | unet-v7a (width 64, 100 epochs, fp16, EMA, checkpoints) and unet-v7b (plus the Lovasz loss and the weight 2 on the patch), one on each GPU. | to run |
-| 2026-11-01 | unet v7cd | `2026-11-01_17_unet-v7cd` | [bumas-p1-unet-v7cd](https://www.kaggle.com/code/jankombajn/bumas-p1-unet-v7cd) | unet-v7c (unet-v7a with cosine restarts) and unet-v7d (unet-v7a with SGD), one on each GPU. | to run |
+| 2026-11-01 | unet v7ab | `2026-11-01_16_unet-v7ab` | [bumas-p1-unet-v7ab](https://www.kaggle.com/code/jankombajn/bumas-p1-unet-v7ab) | unet-v7a (width 64, 100 epochs, fp16, EMA, checkpoints) and unet-v7b (plus the Lovasz loss and the weight 2 on the patch), one on each GPU. | running |
+| 2026-11-01 | unet v7cd | `2026-11-01_17_unet-v7cd` | [bumas-p1-unet-v7cd](https://www.kaggle.com/code/jankombajn/bumas-p1-unet-v7cd) | unet-v7c (unet-v7a with cosine restarts) and unet-v7d (unet-v7a with SGD), one on each GPU. | running |

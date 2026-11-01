@@ -326,8 +326,9 @@ def run_generation(cfg: dict) -> None:
             # gen-v4 version 1: the cache of the saliency check kept 12 GB on GPU 0, so the train shard 0 failed.
             torch.cuda.empty_cache()
 
-    # One zip file for the Kaggle dataset: Output -> New Dataset on the notebook page.
-    with zipfile.ZipFile(output_dir() / f"{cfg['codename']}.zip", "w", zipfile.ZIP_DEFLATED) as z:
+    # One zip file for the Kaggle dataset: Output -> New Dataset on the notebook page. Kaggle extracts a zip to a folder
+    # with the name of the zip. The name "<codename>.zip" failed (gen-v4), because the folder <codename>/ is also an output.
+    with zipfile.ZipFile(output_dir() / f"{cfg['codename']}-set.zip", "w", zipfile.ZIP_DEFLATED) as z:
         for part in ["train", "val"]:
             for ext in ["npy", "csv"]:
                 z.write(out_dir / f"{part}.{ext}", f"{part}.{ext}")

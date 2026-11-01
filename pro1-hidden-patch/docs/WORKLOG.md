@@ -17,15 +17,15 @@
 - Made the split once: `splits/split.csv`, 4500 train and 500 val, stratified by image kind and attack, seed 0.
 - Checked val_flip: after a vertical flip, smoothing of the patch gives the true class for 7% of the patch images (93% without the flip). ResNet-18 misclassifies upside-down images, so val_flip does not show the work of a method on patches in the top half.
 - Added `src/saliency.py`: integrated gradients toward a smoothed image give candidate boxes, and a causal check with ResNet-18 selects the patch. The method needs no training.
-- Added `kaggle-jobs/` with `JOBS.md` (job list and status) and the job scripts. The smoke test found that Kaggle runs Python 3.13.
+- Added `jobs/` with `JOBS.md` (job list and status) and the job scripts. The smoke test found that Kaggle runs Python 3.13.
 - Ran the job `saliency` on Kaggle (2x T4, 22 min). Val: saliency-v1 (median 3x3) 0.530, saliency-v2 (Gaussian blur) 0.525. Clean 0.88, decoy-only 0.94, patch images 0.30-0.51 (MI-FGSM is the worst).
 - The weak part is the box: the best of the 32 candidates has a mean IoU of only 0.58 on patch images. Maps with only the positive part of the gradients were worse (0.35).
 - Made `submissions/submission_saliency-v1.csv` for the leaderboard: 20.9% of the answers are 0,0,0,0, and 51% of the boxes are in the top half.
 - Added `src/unet.py`: a UNet on the image and its noise residual predicts the masks of the patch and the decoys. The causal check with ResNet-18 selects the patch. Flips and 90 degree rotations are the augmentation, and the prediction is the mean over all 8.
 - unet-v1 (image and residual only): val 0.350, mask IoU 0.21. The UNet does not find the weak noise well from 4000 images.
 - unet-v2 (with the integrated gradients map as input): val 0.508, mask IoU 0.33. Detection is almost perfect (clean 1.00, decoy-only 0.98), but the boxes are worse than in saliency-v1 (0.530).
-- Changed `kaggle-jobs/wait.sh`: it writes each status change of a job into `JOBS.md`.
-- Added the small outputs of each Kaggle run to `kaggle-jobs/<job folder>/<codename>/`: `metrics.json`, `report_*.csv` and the train loss. Submission files stay out of git, because the repository is public.
+- Changed `jobs/wait.sh`: it writes each status change of a job into `JOBS.md`.
+- Added the small outputs of each Kaggle run to `jobs/<job folder>/<codename>/`: `metrics.json`, `report_*.csv` and the train loss. Submission files stay out of git, because the repository is public.
 - `src/unet.py` now writes the loss of each epoch to `train_log.csv`.
 
 ### Conclusions on 2026-10-31
@@ -33,7 +33,7 @@
 - The best method is saliency-v1 (val 0.530). The file `submission_saliency-v1.csv` is ready, but nobody sent it to the leaderboard yet. Git does not keep it. Download it from the output of the Kaggle notebook `bumas-p1-saliency`, or run the job again.
 - Detection (patch or no patch) is good in all methods. The unet-v2 detection is almost perfect (clean 1.00, decoy-only 0.98).
 - The box is the weak part. MI-FGSM patches get the lowest points in all methods (0.21-0.32).
-- The UNet loss still decreased at epoch 60 (`kaggle-jobs/2026-10-31_0[34]_unet-v[12]/unet-v*/train_log.txt`). Thus the training was too short.
+- The UNet loss still decreased at epoch 60 (`jobs/2026-10-31_0[34]_unet-v[12]/unet-v*/train_log.txt`). Thus the training was too short.
 - val_flip is not valid (see above). At this time we have no valid check for patches in the top half. The UNet is equal for top and bottom by design (8 flips and rotations in training and prediction). The saliency method has no training.
 
 ### Next steps
@@ -135,7 +135,7 @@
 - gen-v4 version 2 is complete (2 hours 20 minutes). The output `gen-v4.zip` has the generated train and val sets.
   - Train: 30436 images from 52480 jobs (58%). Medians of the strength: C&W 7.1, MI-FGSM 8, PGD targeted 10, PGD untargeted 8 (/255).
   - Val: 1100 images, the same as version 1. saliency-v1 on it: 0.411 (JPEG 80-89: 0.383, JPEG 90-95: 0.448).
-  - The small results are in `kaggle-jobs/2026-11-01_10_gen-v4/gen-v4/`. Git does not keep `examples.png`.
+  - The small results are in `jobs/2026-11-01_10_gen-v4/gen-v4/`. Git does not keep `examples.png`.
 - Started unet-v6 on the output of gen-v4.
 - unet-v6 results (unet-v4b on the real train images plus 30436 generated images, best epoch 37 of 40):
   - Val: 0.637 (unet-v4b: 0.613). C&W 0.576, MI-FGSM 0.482, PGD targeted 0.645, PGD untargeted 0.552, clean 0.92, decoy-only 0.94.
@@ -161,3 +161,6 @@
   - unet-v7d: SGD.
 - unet-v6 on the leaderboard: 0.6212 (unet-v4b: 0.5590). This is the first place (the next team has 0.6024). 1188 of 5000 test answers are 0,0,0,0.
 - The public half has 2500 images. With a standard deviation of approximately 0.4 for the points of one image, the standard error is approximately 0.008.
+- The Kaggle dataset from the output of gen-v4 failed: "Directory already exists: gen-v4". Kaggle extracts `gen-v4.zip` to the folder `gen-v4/`, and the output already has this folder. The generator now writes `<codename>-set.zip`. The jobs read gen-v4 from the notebook output.
+- New structure: one folder `jobs/` in place of `kaggle-jobs/` and `configs/`. Each job folder has `run.py`, `kernel-metadata.json`, one `<codename>.yaml` for each codename of the job, and the results in `<codename>/`. `load_config()` finds `jobs/*/<codename>.yaml`.
+- `docs/results.md` now has the column Job (the job folder). The column Train now also has the tune points of the UNet methods.
