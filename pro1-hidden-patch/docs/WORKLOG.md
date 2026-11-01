@@ -137,3 +137,11 @@
   - Val: 1100 images, the same as version 1. saliency-v1 on it: 0.411 (JPEG 80-89: 0.383, JPEG 90-95: 0.448).
   - The small results are in `kaggle-jobs/2026-11-01_10_gen-v4/gen-v4/`. Git does not keep `examples.png`.
 - Started unet-v6 on the output of gen-v4.
+- unet-v6 results (unet-v4b on the real train images plus 30436 generated images, best epoch 37 of 40):
+  - Val: 0.637 (unet-v4b: 0.613). C&W 0.576, MI-FGSM 0.482, PGD targeted 0.645, PGD untargeted 0.552, clean 0.92, decoy-only 0.94.
+  - MI-FGSM has the largest gain: 0.482 against 0.399.
+  - Generated val set: 0.518 (saliency-v1: 0.411). JPEG 80-89: 0.484, JPEG 90-95: 0.562.
+  - The tune loss decreased to the end (0.805 at epoch 37). The generated images stop the overfit of unet-v3 and unet-v4b.
+  - On the test set, unet-v6 answers 0,0,0,0 for 23.8% of the images (unet-v4b: 27.0%, expected: approximately 20%).
+  - JPEG quality 80-88: 24.8% of 0,0,0,0 answers (unet-v4b: 29.9%). The gap between the two JPEG bands is now small.
+- Decision: unet-v6 is a clear improvement (+0.024 on val, better 0,0,0,0 rates on the low JPEG quality). The submission `submission_unet-v6.csv` is ready.
