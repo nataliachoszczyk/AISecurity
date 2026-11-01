@@ -4,7 +4,45 @@ This document describes a method to run experiments with models on Kaggle from a
 
 The local machine has the code and the records. Kaggle does the heavy computation. Git connects the two.
 
-## 1. Platform facts
+## 1. Local setup
+
+The local machine needs these items:
+
+| Item | Where | What to do |
+|---|---|---|
+| Kaggle account | kaggle.com | Do the phone verification (Settings). Without it, a kernel gets no GPU and no internet. |
+| Python environment | `.venv` in the root folder of the repository | Make it with uv (see the README or the instructions of the repository). |
+| Kaggle CLI | the package `kaggle` in `requirements.txt` | Install it into `.venv`. Version 2.2.5 works. Then the command is `.venv/bin/kaggle`. |
+| API token | `~/.kaggle/access_token` | On kaggle.com, open Settings, API, and generate a new token. Write the token into this file as one line. |
+| Access to the data | the private Kaggle dataset of the project | The owner of the dataset shares it with the account. |
+| Git remote | a public repository with the project branch | The kernels clone the code from it (section 4). |
+
+Do these steps:
+
+1. Install the environment:
+
+   ```bash
+   uv venv --python 3.12 .venv
+   uv pip install --python .venv -r requirements.txt
+   ```
+
+2. Write the token into the file and protect the file:
+
+   ```bash
+   mkdir -p ~/.kaggle
+   echo "<token>" > ~/.kaggle/access_token
+   chmod 600 ~/.kaggle/access_token
+   ```
+
+3. Do a test of the connection. The command shows the kernels of the account:
+
+   ```bash
+   .venv/bin/kaggle kernels list --mine
+   ```
+
+Do not commit the token. It gives full access to the account.
+
+## 2. Platform facts
 
 | Item | Value |
 |---|---|
@@ -27,7 +65,7 @@ Important behavior:
 - `kaggle kernels logs -f <user>/<project>-<job name>` shows the live log. The output of child processes is sometimes not in it.
 - Use `kaggle kernels status <user>/<project>-<job name>` for the state: QUEUED, RUNNING, COMPLETE, ERROR or CANCEL.
 
-## 2. Repository structure
+## 3. Repository structure
 
 ```
 <project>/
@@ -93,11 +131,18 @@ Lines for `.gitignore`. They keep data, model weights and logs out of git:
 *.zip
 ```
 
-## 3. Code and data on Kaggle
+## 4. Code and data on Kaggle
 
 ### Code
 
-The kernel clones the project branch from a public repository, with a sparse checkout of the project folder. Thus every run uses code from git, and the commit hash goes into the log. Push the code before the push of the kernel.
+The kernel clones the project branch from a public repository. Thus every run uses code from git, and the commit hash goes into the log. Push the code before the push of the kernel.
+
+If the repository has more than one project, clone only the project folder with a sparse checkout. The templates below do this. If the project is the complete repository, clone the complete repository and remove the `sparse-checkout` line:
+
+```python
+subprocess.run(["git", "clone", "--depth", "1", "--branch", BRANCH, REPO, CLONE], check=True)
+sys.path.insert(0, CLONE)
+```
 
 Clone into `/tmp`, not into `/kaggle/working`. Otherwise the clone becomes a part of the output.
 
@@ -159,7 +204,7 @@ for codename in CODENAMES:
     run_experiment(load_config(codename))
 ```
 
-## 4. Use of the two GPUs
+## 5. Use of the two GPUs
 
 A T4 x2 session has two GPUs, and the quota counts the session. A job that uses one GPU wastes half of its cost.
 
@@ -205,13 +250,13 @@ Rules for this pattern:
 - The experiment function gets the device as an argument, and it calls `torch.cuda.set_device(device)`.
 - Each process writes its results into its own folder, `/kaggle/working/<codename>/`.
 - The main process must not keep GPU memory. If it used the GPU before the start of the pool, call `torch.cuda.empty_cache()`. In one job, the main process kept 12 GB of cache on GPU 0, and the process for GPU 0 failed with "CUDA out of memory".
-- If one process fails, the complete job fails, and Kaggle deletes the output of both experiments. Thus do a smoke test first (section 6).
+- If one process fails, the complete job fails, and Kaggle deletes the output of both experiments. Thus do a smoke test first (section 7).
 - Two jobs with two experiments each give four experiments at the same time.
 - Two processes share the RAM of the session. Each process must stay below approximately half of it.
 
 For a CPU job, use `multiprocessing.Pool(4)` for the 4 cores.
 
-## 5. Start and follow a job
+## 6. Start and follow a job
 
 ### Start
 
@@ -296,14 +341,14 @@ Run it as a background task, because it waits until the kernel stops (minutes or
 - If a `wait.sh` process stops (for example after a move of the folder), start it again.
 - When a job ends, check that its row shows the final status.
 
-## 6. Protect long runs
+## 7. Protect long runs
 
 - **Smoke test.** Before a run of many hours, run the same code path on a small part of the data. Use a CPU kernel, or the local machine if it has enough memory. The test must do all steps, also the final steps (selection, reports, final files). An error at the end of a long run loses all its results.
 - **Early checks.** Put cheap checks at the start. If a check fails, stop the job. Example: after a small part of a data generation, compare a statistic of the new data with the expected value. If it is wrong, the job stops before the long part.
 - **Deadline.** A long loop gets a deadline (for example 9 hours). After it, no new batch starts, and the job writes its results before the 12-hour limit.
 - **No heavy work on the local machine.** The local machine does only small checks. It can stop a process if the memory is low.
 
-## 7. Outputs
+## 8. Outputs
 
 1. List the files and their sizes: `kaggle kernels files <user>/<project>-<job name>`.
 2. Download only the small files into the output folder of the job:
@@ -318,11 +363,11 @@ Run it as a background task, because it waits until the kernel stops (minutes or
 
 Write large intermediate data only to `/kaggle/temp/` or to `/kaggle/working/cache/`. Write small results as CSV or JSON.
 
-## 8. Records
+## 9. Records
 
 ### `jobs/JOBS.md`
 
-The file starts with a short procedure (sections 5 and 7), then the table:
+The file starts with a short procedure (sections 6 and 8), then the table:
 
 ```markdown
 Status values: to run, waiting for another job, queued, running, complete, failed, cancelled. The status cell has only one of these values, because `wait.sh` changes it. Put results into the comment.
@@ -345,9 +390,9 @@ Some projects need a table that compares the methods. The columns depend on the 
 - Write a row as soon as its results are available. Write "pending" only for a value that does not exist yet.
 - Text above the table tells what each column measures.
 
-## 9. Experiment method
+## 10. Experiment method
 
-- **Codenames.** Each experiment has a codename with a version, for example `unet-v7a`. Variants of one idea get letters (section 2).
+- **Codenames.** Each experiment has a codename with a version, for example `unet-v7a`. Variants of one idea get letters (section 3).
 - **One change for each variant.** A group of variants has a common base, and each variant changes one thing. Then the difference shows the effect of this change.
 - **Split.** Keep a fixed validation split in a file. Keep a small tune part of the train data for thresholds and for the selection of the checkpoint. Use the validation set only for decisions.
 - **Checkpoints.** Train longer and keep checkpoints (for example after each 5 epochs, in CPU memory). At the end, score each checkpoint with the real metric on the tune part, and keep the best. The loss does not always follow the metric.
