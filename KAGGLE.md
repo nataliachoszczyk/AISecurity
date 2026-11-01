@@ -42,7 +42,6 @@ Important behavior:
         <codename>.yaml     one config for each experiment of the job
         output/             the small results, with the same paths as /kaggle/working/
           <codename>/       metrics.json, report_*.csv, train_log.csv, ...
-  submissions/            submission files (not in git)
 ```
 
 ### Names
@@ -53,7 +52,7 @@ The job folder `YYYY-MM-DD_NN_<job name>` identifies a job. NN is the number of 
 |---|---|
 | Job folder, for example `2026-11-01_16_unet-v7ab` | The folder in `jobs/runs/` and the column Folder in `JOBS.md`. |
 | Job name: the last part of the job folder, for example `unet-v7ab` | The kernel id (`<user>/<project>-unet-v7ab`), the column Job in `JOBS.md`, the second argument of `wait.sh`. |
-| Codename, for example `unet-v7a` | The config file (`unet-v7a.yaml`), the output folder (`output/unet-v7a/`), the files of the run (`submission_unet-v7a.csv`), and a table of results, if the project has one. |
+| Codename, for example `unet-v7a` | The config file (`unet-v7a.yaml`), the output folder (`output/unet-v7a/`), and a table of results, if the project has one. |
 
 - Each name is unique in the project. A search for a name finds all files of this job or experiment.
 - A job has one or more codenames: one config file and one output folder for each codename.
@@ -84,15 +83,13 @@ def load_config(codename: str) -> dict:
     return cfg
 ```
 
-Lines for `.gitignore`. Images can show the task data, and a public repository must not show them:
+Lines for `.gitignore`. Images can show the data of the project, and a public repository must not show them:
 
 ```
-**/submissions/*.csv
 **/jobs/runs/*/output/**/*.npy
 **/jobs/runs/*/output/**/*.npz
 **/jobs/runs/*/output/**/*.png
 **/jobs/runs/*/output/**/*.log
-**/jobs/runs/*/output/**/submission_*.csv
 *.pt
 *.zip
 ```
@@ -167,7 +164,7 @@ for codename in CODENAMES:
 
 A T4 x2 session has two GPUs, and the quota counts the session. A job that uses one GPU wastes half of its cost.
 
-Measurements (ResNet-18 attacks and a small UNet, 64x64 images):
+Measurements from one project (a ResNet-18 and a small UNet, 64x64 images):
 
 | Setup | Time for each image step |
 |---|---|
@@ -283,8 +280,8 @@ The path to the `kaggle` command assumes a `.venv` two levels above `jobs/`. Cha
 
 ## 6. Protect long runs
 
-- **Smoke test.** Before a run of many hours, run the same code path on a few images. Use a CPU kernel, or the local machine if it has enough memory. The test must do all steps, also the final steps (selection, reports, submission). An error at the end of a long run loses all of it.
-- **Early checks.** Put cheap checks at the start. If a check fails, stop the job. Example: after a small part of the data generation, compare the attack strength with the target. If it is wrong, the job stops before the long part.
+- **Smoke test.** Before a run of many hours, run the same code path on a small part of the data. Use a CPU kernel, or the local machine if it has enough memory. The test must do all steps, also the final steps (selection, reports, final files). An error at the end of a long run loses all its results.
+- **Early checks.** Put cheap checks at the start. If a check fails, stop the job. Example: after a small part of a data generation, compare a statistic of the new data with the expected value. If it is wrong, the job stops before the long part.
 - **Deadline.** A long loop gets a deadline (for example 9 hours). After it, no new batch starts, and the job writes its results before the 12-hour limit.
 - **Data leakage checks.** Use `assert` statements to check that no train data goes into the validation data.
 - **No heavy work on the local machine.** The local machine does only small checks. It can stop a process if the memory is low.
@@ -299,9 +296,8 @@ The path to the `kaggle` command assumes a `.venv` two levels above `jobs/`. Cha
    ```
 
    The pattern is a regular expression for the complete path. Do not start it with `^`.
-3. Move `submission_*.csv` files to `submissions/`.
-4. Delete the downloaded `.log` file if it is not necessary.
-5. Commit the small results.
+3. Delete the downloaded `.log` file if it is not necessary.
+4. Commit the small results.
 
 Write large intermediate data only to `/kaggle/temp/` or to `/kaggle/working/cache/`. Write small results as CSV or JSON.
 
@@ -316,7 +312,7 @@ Status values: to run, waiting for another job, queued, running, complete, faile
 
 | Date | Job | Folder | Link | Comment | Status |
 |---|---|---|---|---|---|
-| 2026-11-01 | unet-v6 | `2026-11-01_15_unet-v6` | [bumas-p1-unet-v6](https://www.kaggle.com/code/<user>/bumas-p1-unet-v6) | The UNet on the real and the generated images. Val 0.637. | complete |
+| 2026-11-01 | unet-v6 | `2026-11-01_15_unet-v6` | [<project>-unet-v6](https://www.kaggle.com/code/<user>/<project>-unet-v6) | The UNet on the real and the generated data. Val 0.637. | complete |
 ```
 
 - The column Job is the name that `wait.sh` gets as its second argument.
@@ -326,7 +322,7 @@ Status values: to run, waiting for another job, queued, running, complete, faile
 
 ### A table of results (optional)
 
-Some projects need a table that compares the methods, for example for a leaderboard. The columns depend on the project, so decide them at the start of the project. If the project has such a table, these rules help:
+Some projects need a table that compares the methods. The columns depend on the project, so decide them at the start of the project. If the project has such a table, these rules help:
 
 - Each row has the codename and the job folder. Then the config and the results of a row are easy to find.
 - Write a row as soon as its results are available. Write "pending" only for a value that does not exist yet.
@@ -339,5 +335,4 @@ Some projects need a table that compares the methods, for example for a leaderbo
 - **Split.** Keep a fixed validation split in a file. Keep a small tune part of the train data for thresholds and for the selection of the checkpoint. Use the validation set only for decisions.
 - **Checkpoints.** Train longer and keep checkpoints (for example after each 5 epochs, in CPU memory). At the end, score each checkpoint with the real metric on the tune part, and keep the best. The loss does not always follow the metric.
 - **Noise.** Two runs with the same settings and a different seed show the random difference. A difference smaller than this is not a result. Keep a separate `train_seed` if the main seed also selects the data split.
-- **Leaderboard.** Send a submission only after a clear gain on validation. The public part of the test set is small, so its score has a random error (approximately 0.4 / sqrt(n) for points between 0 and 1).
-- **Data that the train set does not show.** Compare the train data and the test data (for example the JPEG quality). If the test data has a different distribution, generate train data for it and measure this case separately.
+- **Data that the train set does not show.** Compare the train data and the test data (for example the image quality or the class balance). If the test data has a different distribution, generate train data for it and measure this case separately.
