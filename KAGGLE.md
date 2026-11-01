@@ -46,14 +46,16 @@ Important behavior:
 
 ### Names
 
-There are two names, and each name is the same in all places:
+The job folder `YYYY-MM-DD_NN_<job name>` identifies a job. One job folder is one Kaggle kernel and one row in `JOBS.md`.
 
 | Name | Where it occurs |
 |---|---|
-| Job name, for example `unet-v7ab` | The end of the job folder name (`2026-11-01_16_unet-v7ab`), the kernel id (`<user>/<project>-unet-v7ab`), the column Job in `JOBS.md`, the second argument of `wait.sh`. |
+| Job folder, for example `2026-11-01_16_unet-v7ab` | The folder in `jobs/` and the column Folder in `JOBS.md`. |
+| Job name: the last part of the job folder, for example `unet-v7ab` | The kernel id (`<user>/<project>-unet-v7ab`), the column Job in `JOBS.md`, the second argument of `wait.sh`. |
 | Codename, for example `unet-v7a` | The config file (`unet-v7a.yaml`), the output folder (`output/unet-v7a/`), the files of the run (`submission_unet-v7a.csv`), and a table of results, if the project has one. |
 
 - Each name is unique in the project. A search for a name finds all files of this job or experiment.
+- A job has one or more codenames: one config file and one output folder for each codename.
 - Variants of one idea get letters: `unet-v7a`, `unet-v7b`, `unet-v7c`, `unet-v7d`.
 - The job name is the common part of its codenames plus their letters. The job `unet-v7ab` runs `unet-v7a` and `unet-v7b`, and the job `unet-v7cd` runs `unet-v7c` and `unet-v7d`.
 - If a job has only one experiment, its codename is the job name.
@@ -317,7 +319,8 @@ Status values: to run, waiting for another job, queued, running, complete, faile
 
 - The column Job is the name that `wait.sh` gets as its second argument.
 - The status cell has one word only. A result in this cell stops `wait.sh`, because its pattern does not match.
-- Each job has one row. A new version of the job (for example after an error) uses the same row and gets a note in the comment, for example "Version 1: out of memory on GPU 0". `wait.sh` changes all rows with the job name, so a second row of the same job also changes.
+- One job folder has one row. A new version of the job (for example after an error) uses the same row and gets a note in the comment, for example "Version 1: out of memory on GPU 0".
+- A second row of the same job causes errors: `wait.sh` changes all rows with the job name.
 
 ### A table of results (optional)
 

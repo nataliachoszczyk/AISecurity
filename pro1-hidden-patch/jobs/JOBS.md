@@ -10,13 +10,13 @@
 6. Push with `kaggle kernels push -p <folder>`. Then run `bash jobs/wait.sh <kernel id> <job name>`. The job name is the end of the folder name. It writes each status change into the table below.
 7. Download only small outputs: `kaggle kernels output <kernel id> -p <job folder>/output --file-pattern '(json|csv|png)$'`. The folder `output/` has the same paths as `/kaggle/working/`. Move `submission_*.csv` to `submissions/`. Do not download `.npy`, `.zip` or `.pt` files.
 
+One folder in `jobs/` has one row. A new version of a job uses the same row and gets a note in the comment.
+
 Status values: to run, waiting for another job, queued, running, complete, failed, cancelled. The status cell has only one of these values, because `wait.sh` changes it. Put results into the comment.
 
 | Date | Job | Folder | Link | Comment | Status |
 |---|---|---|---|---|---|
-| 2026-10-31 | smoke | `2026-10-31_01_smoke` | [bumas-p1-smoke](https://www.kaggle.com/code/nataliachoszczyk/bumas-p1-smoke) | Check the GPU, the data, the repository clone and the output folder. The kernel had no internet, so `git clone` failed. | failed |
-| 2026-10-31 | smoke | `2026-10-31_01_smoke` | [bumas-p1-smoke](https://www.kaggle.com/code/nataliachoszczyk/bumas-p1-smoke) | The same check with the code in the script (no clone). It ran on the CPU, because the account had no phone verification. Replaced by v3. | cancelled |
-| 2026-10-31 | smoke | `2026-10-31_01_smoke` | [bumas-p1-smoke](https://www.kaggle.com/code/nataliachoszczyk/bumas-p1-smoke) | The check with `git clone`, internet and GPU T4 x2. Result: 2x Tesla T4, Python 3.13, torch 2.11, approximately 900 images/s. | complete |
+| 2026-10-31 | smoke | `2026-10-31_01_smoke` | [bumas-p1-smoke](https://www.kaggle.com/code/nataliachoszczyk/bumas-p1-smoke) | Check the GPU, the data, the repository clone and the output folder. Version 1 failed: the kernel had no internet, so `git clone` failed. Version 2 was cancelled: it ran on the CPU, because the account had no phone verification. Version 3: 2x Tesla T4, Python 3.13, torch 2.11, approximately 900 images/s. | complete |
 | 2026-10-31 | saliency | `2026-10-31_02_saliency` | [bumas-p1-saliency](https://www.kaggle.com/code/nataliachoszczyk/bumas-p1-saliency) | saliency-v1 (median 3x3) and saliency-v2 (Gaussian blur): tune on 1500 train images, score val, make the test submission. Run time 22 min. Val: v1 0.530, v2 0.525. | complete |
 | 2026-10-31 | unet-v1 | `2026-10-31_03_unet-v1` | [bumas-p1-unet, version 1](https://www.kaggle.com/code/nataliachoszczyk/bumas-p1-unet) | unet-v1: train the UNet (60 epochs), tune on 450 train images, score val, make the test submission. Val 0.350, mask IoU 0.21: the UNet does not find the weak noise well. | complete |
 | 2026-10-31 | unet-v2 | `2026-10-31_04_unet-v2` | [bumas-p1-unet, version 2](https://www.kaggle.com/code/nataliachoszczyk/bumas-p1-unet?scriptVersionId=364350786) | unet-v2: the UNet also gets the integrated gradients map of ResNet-18. Val 0.508, mask IoU 0.33. | complete |
