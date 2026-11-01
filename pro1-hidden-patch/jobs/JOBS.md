@@ -2,7 +2,7 @@
 
 ## How to run a job
 
-1. Make a new folder `jobs/runs/YYYY-MM-DD_NN_<job name>` (NN gives the order on one day). Put `run.py`, `kernel-metadata.json` and one `<codename>.yaml` for each codename of the job into it. Copy them from the last job.
+1. Make a new folder `jobs/runs/YYYY-MM-DD_NN_<job name>` (NN: the next number after the last job in the project, not a number for each day). Put `run.py`, `kernel-metadata.json` and one `<codename>.yaml` for each codename of the job into it. Copy them from the last job.
 2. Use one Kaggle notebook for each experiment: the kernel id is `<kaggle user>/bumas-p1-<codename>`. Then the link always shows the correct run. The Kaggle API does not give the version ID.
 3. On a different Kaggle account, change the user in the kernel id. The account needs phone verification (for GPU and internet) and access to the dataset `jankombajn/bumas-p1-hidden-patch`. Do not upload copies of the data.
 4. Settings in `kernel-metadata.json`: `"machine_shape": "NvidiaTeslaT4"` (2x T4), `"enable_internet": true`. The script clones the branch `pro1`, so push the code first.

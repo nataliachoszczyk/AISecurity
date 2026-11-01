@@ -36,7 +36,7 @@ Important behavior:
     JOBS.md               the list of all jobs and their status
     wait.sh               follows one kernel and writes its status into JOBS.md
     runs/
-      YYYY-MM-DD_NN_<job>/  one folder for each job (NN gives the order on one day)
+      YYYY-MM-DD_NN_<job>/  one folder for each job (NN: the number of the job in the project)
         run.py              the script that Kaggle runs
         kernel-metadata.json
         <codename>.yaml     one config for each experiment of the job
@@ -47,7 +47,7 @@ Important behavior:
 
 ### Names
 
-The job folder `YYYY-MM-DD_NN_<job name>` identifies a job. One job folder is one Kaggle kernel and one row in `JOBS.md`.
+The job folder `YYYY-MM-DD_NN_<job name>` identifies a job. NN is the number of the job in the project (01, 02, 03, ...). It does not start again on a new day. Thus the folders sort in the order of the jobs, and the number alone identifies a job. One job folder is one Kaggle kernel and one row in `JOBS.md`.
 
 | Name | Where it occurs |
 |---|---|
