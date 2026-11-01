@@ -165,3 +165,18 @@
 - New structure: one folder `jobs/` in place of `kaggle-jobs/` and `configs/`. Each job folder has `run.py`, `kernel-metadata.json`, one `<codename>.yaml` for each codename of the job, and the results in `<codename>/`. `load_config()` finds `jobs/*/<codename>.yaml`.
 - `docs/results.md` now has the column Job (the job folder). The column Train now also has the tune points of the UNet methods.
 - The results of a job are now in `jobs/<job folder>/output/`, with the same paths as `/kaggle/working/`. Only small files are downloaded. The root `.gitignore` keeps images, logs, `.npy` files and submission files of `output/` out of git.
+- unet-v7 results (width 64, 100 epochs, fp16, EMA, checkpoint with the most tune points). All four variants are better than unet-v6 (val 0.637):
+
+  | Variant | Change | Best checkpoint | Tune | Val | Generated val | JPEG 80-89 (generated) |
+  |---|---|---|---|---|---|---|
+  | unet-v7a | base (AdamW, one cycle, BCE plus Dice) | 64 | 0.655 | 0.654 | 0.535 | 0.503 |
+  | unet-v7b | Lovasz loss, patch weight 2 | 79 | 0.643 | 0.646 | 0.535 | 0.504 |
+  | unet-v7c | cosine restarts | 99 | 0.663 | 0.653 | 0.528 | 0.494 |
+  | unet-v7d | SGD | 94 | 0.665 | 0.663 | 0.553 | 0.522 |
+
+  - unet-v7d is the best on all four attacks (MI-FGSM 0.530, unet-v6 0.482). Clean images: 0.90 (unet-v6 0.92).
+  - unet-v7a overfits after epoch 55: the tune loss increases from 0.783 to 0.879, but the tune points stay at approximately 0.65.
+  - unet-v7d still improves at epoch 94-99. More epochs with SGD can help.
+  - The Lovasz loss does not help (unet-v7b is the worst of the four).
+  - On the test set, all variants answer 0,0,0,0 for approximately 24% of the images.
+- Decision: unet-v7d is a clear improvement on val (+0.026) and on the generated val set (+0.035). The submission `submission_unet-v7d.csv` is ready.
