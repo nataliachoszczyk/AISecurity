@@ -219,6 +219,21 @@ For a CPU job, use `multiprocessing.Pool(4)` for the 4 cores.
 2. Add a row to `jobs/JOBS.md` with the status `to run`.
 3. Push the kernel and start `wait.sh` for it.
 
+The push sends `run.py` and `kernel-metadata.json` of the job folder to Kaggle and starts the kernel:
+
+```bash
+# From the project folder:
+kaggle kernels push -p jobs/runs/YYYY-MM-DD_NN_<job name>
+```
+
+Output if the push is correct:
+
+```
+Kernel version 1 successfully pushed.  Please check progress at https://www.kaggle.com/code/<user>/<project>-<job name>
+```
+
+The first push makes the kernel. A second push of the same folder makes version 2 of the same kernel.
+
 If two GPU sessions are active, the push fails. This loop tries again until a slot is free, and then follows the job:
 
 ```bash
