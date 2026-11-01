@@ -186,3 +186,9 @@
 - Job `2026-11-01_18_unet-v8`: unet-v8a (unet-v7d with 200 epochs) and unet-v8b (the same with train seed 1). unet-v8b shows the effect of the seed.
 - Job `2026-11-01_19_unet-ens`: unet-ens1 (mean of unet-v7a, v7c and v7d) and unet-ens2 (mean of all four unet-v7 variants).
 - Renamed `docs/results.md` to `docs/RESULTS.md`.
+- Ensemble results (job `2026-11-01_19_unet-ens`, 19 minutes):
+  - unet-ens1 (v7a, v7c, v7d): tune 0.663, val 0.666, generated val 0.547.
+  - unet-ens2 (all four): tune 0.661, val 0.665, generated val 0.550.
+  - unet-v7d alone: tune 0.665, val 0.663, generated val 0.553.
+  - The ensembles are better on clean images (0.94 against 0.90), but a little worse on the attacks. The total is the same as unet-v7d.
+- Decision: no submission of an ensemble. The mean of the masks makes them smoother, but the variants make similar errors.

@@ -1,0 +1,16 @@
+{
+  "codename": "unet-ens2",
+  "tune_score": 0.6614187000867542,
+  "rule": "unet",
+  "threshold": 1.5,
+  "best_epoch": null,
+  "tune": 0.6614187000867542,
+  "mask_iou_tune": 0.534767125984992,
+  "val": 0.6651712883002332,
+  "mask_iou_val": 0.5074952181376032,
+  "val_flip": 0.33214514543111817,
+  "mask_iou_val_flip": 0.16976959763401742,
+  "gen_val": 0.5495249433068616,
+  "mask_iou_gen_val": 0.47562859787361217,
+  "val_mean": 0.4986582168656757
+}
