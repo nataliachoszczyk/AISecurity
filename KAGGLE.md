@@ -301,7 +301,6 @@ Run it as a background task, because it waits until the kernel stops (minutes or
 - **Smoke test.** Before a run of many hours, run the same code path on a small part of the data. Use a CPU kernel, or the local machine if it has enough memory. The test must do all steps, also the final steps (selection, reports, final files). An error at the end of a long run loses all its results.
 - **Early checks.** Put cheap checks at the start. If a check fails, stop the job. Example: after a small part of a data generation, compare a statistic of the new data with the expected value. If it is wrong, the job stops before the long part.
 - **Deadline.** A long loop gets a deadline (for example 9 hours). After it, no new batch starts, and the job writes its results before the 12-hour limit.
-- **Data leakage checks.** Use `assert` statements to check that no train data goes into the validation data.
 - **No heavy work on the local machine.** The local machine does only small checks. It can stop a process if the memory is low.
 
 ## 7. Outputs
@@ -330,7 +329,7 @@ Status values: to run, waiting for another job, queued, running, complete, faile
 
 | Date | Job | Folder | Link | Comment | Status |
 |---|---|---|---|---|---|
-| 2026-11-01 | unet-v6 | `2026-11-01_15_unet-v6` | [<project>-unet-v6](https://www.kaggle.com/code/<user>/<project>-unet-v6) | The UNet on the real and the generated data. Val 0.637. | complete |
+| YYYY-MM-DD | <job name> | `YYYY-MM-DD_NN_<job name>` | [<project>-<job name>](https://www.kaggle.com/code/<user>/<project>-<job name>) | <what the job does; the main results after the end> | complete |
 ```
 
 - The column Job is the name that `wait.sh` gets as its second argument.
