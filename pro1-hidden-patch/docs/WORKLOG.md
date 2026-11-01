@@ -132,3 +132,8 @@
   - The train shard on GPU 0 failed immediately with "CUDA out of memory". The main process kept 12 GB of cache on GPU 0 after the saliency check.
 - `run_generation()` now empties the CUDA cache after the val checks. gen-v4 version 2 runs with this fix.
 - unet-v6 now reads the output of the gen-v4 notebook (`kernel_sources`), not a Kaggle dataset.
+- gen-v4 version 2 is complete (2 hours 20 minutes). The output `gen-v4.zip` has the generated train and val sets.
+  - Train: 30436 images from 52480 jobs (58%). Medians of the strength: C&W 7.1, MI-FGSM 8, PGD targeted 10, PGD untargeted 8 (/255).
+  - Val: 1100 images, the same as version 1. saliency-v1 on it: 0.411 (JPEG 80-89: 0.383, JPEG 90-95: 0.448).
+  - The small results are in `kaggle-jobs/2026-11-01_10_gen-v4/gen-v4/`. Git does not keep `examples.png`.
+- Started unet-v6 on the output of gen-v4.
