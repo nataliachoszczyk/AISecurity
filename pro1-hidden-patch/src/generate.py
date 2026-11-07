@@ -148,8 +148,10 @@ def attack_search(model, x, mask, c, target, kind: str, quality: np.ndarray) -> 
     return best, found, strength
 
 
-def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng, jpeg_range=(80, 95)) -> list[dict]:
+def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng, jpeg_range=(80, 95), base_aug: bool = False) -> list[dict]:
     """Return one job for each new image: base, flip, patch box, new decoys, attack and JPEG quality.
+
+    With base_aug, each job also changes its base (see _prepare). Then the copies of one base are less similar.
 
     The jobs go in rounds: one copy of each base, then the next copy. Thus a stop at the time limit keeps all bases.
     """
@@ -176,7 +178,14 @@ def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng, jpeg_range=(8
                 eps = float(rng.choice(EPS_LEVELS))
                 decoys.append({"type": kind, "strength": eps * 255, "box": b,
                                "noise": decoy_noise(rng, kind, eps, b[3] - b[1], b[2] - b[0])})
-            jobs.append({"base": row.id, "k": k, "box": box, "old_decoys": old, "decoys": decoys,
+            aug = None
+            if base_aug:
+                # A crop moves the old decoys, so only bases without decoys get a crop.
+                size = SIZE if old else int(rng.integers(48, SIZE + 1))
+                aug = {"crop": (size, int(rng.integers(0, SIZE - size + 1)), int(rng.integers(0, SIZE - size + 1))),
+                       "gain": float(rng.uniform(0.85, 1.15)), "bias": float(rng.uniform(-0.05, 0.05)),
+                       "color": rng.uniform(0.92, 1.08, 3)}
+            jobs.append({"base": row.id, "k": k, "box": box, "old_decoys": old, "decoys": decoys, "aug": aug,
                          "attack": str(rng.choice(ATTACKS)), "jpeg": int(rng.integers(jpeg_range[0], jpeg_range[1] + 1)),
                          "target_rank": int(rng.integers(1, 6))})
     return jobs
@@ -198,7 +207,7 @@ def _box_of(mask: np.ndarray, k: int) -> tuple[int, int, int, int]:
 def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
              deadline: float | None = None, exclude: set = frozenset(),
              max_bases: int | None = None, shard: tuple[int, int] = (0, 1),
-             device: str | None = None, jpeg_range=(80, 95)) -> tuple[pd.DataFrame, np.ndarray]:
+             device: str | None = None, jpeg_range=(80, 95), base_aug: bool = False) -> tuple[pd.DataFrame, np.ndarray]:
     """Return the labels and the uint8 images (N, SIZE, SIZE, 3) of the new attacked images.
 
     part selects the bases from splits/split.csv: train or val. exclude has ids that are not bases.
@@ -214,7 +223,7 @@ def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
     bases = bases.reset_index(drop=True)[:max_bases]
     print(f"{part}: {len(bases)} bases", flush=True)
     base_images = dict(zip(bases.id, load_images("train", bases.id)))
-    jobs = make_jobs(bases, copies, hflip, rng, jpeg_range)[shard[0]::shard[1]]
+    jobs = make_jobs(bases, copies, hflip, rng, jpeg_range, base_aug)[shard[0]::shard[1]]
     with torch.no_grad():
         upright = torch.from_numpy(np.stack(list(base_images.values()))).permute(0, 3, 1, 2).to(device)
         base_class = dict(zip(base_images, model(upright).argmax(1).tolist()))
@@ -269,10 +278,20 @@ def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
 
 
 def _prepare(image: np.ndarray, job: dict) -> np.ndarray:
-    """Return the base image after the flip, with the new decoys."""
+    """Return the base image after the flip and the change of base_aug, with the new decoys.
+
+    The class check in generate() rejects a change that changes the ResNet-18 class.
+    """
     x = np.rot90(image, job["k"] % 4)
     x = x[:, ::-1] if job["k"] >= 4 else x
     x = x.copy()
+    if job.get("aug"):
+        a = job["aug"]
+        size, y0, x0 = a["crop"]
+        if size < SIZE:
+            crop = (x[y0:y0 + size, x0:x0 + size] * 255).round().astype(np.uint8)
+            x = np.asarray(Image.fromarray(crop).resize((SIZE, SIZE), Image.BICUBIC), dtype=np.float32) / 255
+        x = np.clip((x * a["gain"] + a["bias"]) * a["color"], 0, 1)
     for d in job["decoys"]:
         x0, y0, x1, y1 = d["box"]
         x[y0:y1, x0:x1] += d["noise"]
@@ -339,7 +358,7 @@ def _generate_shard(part: str, cfg: dict, deadline: float | None, shard: tuple[i
     device = f"cuda:{shard[0]}" if torch.cuda.is_available() else "cpu"
     labels, images = generate(part, cfg[f"{part}_copies"], cfg["hflip"], cfg["seed"] + (part == "val"), cfg["batch"],
                               deadline, tune_ids(cfg["tune_fraction"], cfg["tune_seed"]), cfg.get("max_bases"), shard, device,
-                              cfg.get("jpeg", (80, 95)))
+                              cfg.get("jpeg", (80, 95)), cfg.get("base_aug", False))
     save_set(out_dir / f"{part}_{shard[0]}", labels, images)
 
 
