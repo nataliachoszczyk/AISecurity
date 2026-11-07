@@ -263,3 +263,11 @@
   - `variants`: the list of the other variants (causal, selector, jpeg). post-v1 showed that they do not help, so post-v2 can skip them.
 - The fitted boxes already search all boxes of an allowed size (approximately 700 sizes and 1 million boxes on each image). Thus the limit is the score of the boxes, not the search.
 - New variant `scan` in `src/post.py`: the scan statistic of the noise variance. For each box near the answer (each side ±radius pixels), the log-likelihood ratio compares the variance of the noise residual inside the box and in a ring around it. A weight lam adds the UNet evidence, because a decoy also has a high noise variance. lam and the ring size are tuned on the tune part.
+- gen-v5 (jankombajn) and gen-v6 (nataliachoszczyk, version 2) are complete. All jobs ended in approximately 2 hours. gen-v5: train 31027 images, val 93. gen-v6: train 30703 images, val 448.
+- boxnet-v1 results. Jitter IoU on val: 0.738 before, 0.759 (v1a) and 0.775 (v1b) after. On the unet-v8 answers boxnet-v1b loses points: val 0.677 (base), 0.659 (edge1, delta -0.018, standard error 0.004). The UNet errors are not random edge changes. BoxNet is not used.
+- post-v2 results (mean of unet-v8a and unet-v8b, account nataliachoszczyk). Val: base 0.676 (tuned fit offset 0.25), soft 0.678 (delta +0.003, standard error 0.001), scan 0.669 (delta -0.007, standard error 0.002). The post-processing cannot reach 0.70. The next gains must come from the UNet.
+- New training jobs against the overfit (train loss 0.35, tune loss 0.81 in unet-v8b):
+  - `2026-11-07_29_unet-v10` (jankombajn): unet-v10a is unet-v8b on the real images, gen-v4 and gen-v5 (65513 images). unet-v10b adds 2 transformer layers at the 8x8 level. One epoch takes approximately 2.5 minutes.
+  - `2026-11-07_30_unet-v11` (nataliachoszczyk): unet-v8b on the real images and all three generated sets (approximately 97000 images), 120 epochs. 200 epochs can go over the 12-hour limit.
+  - `2026-11-07_31_unet-v11b` (nataliachoszczyk): unet-v11 with the transformer layers and train_seed 2. It is also a second model for an ensemble.
+- The local monitors: one loop checks all running jobs every 5 minutes and stops when a job ends.
