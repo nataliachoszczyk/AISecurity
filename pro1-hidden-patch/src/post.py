@@ -105,6 +105,48 @@ def allowed(boxes: np.ndarray) -> np.ndarray:
     return (w >= 4) & (h >= 4) & (area >= 0.08) & (area <= 0.15) & (w <= 2 * h) & (h <= 2 * w)
 
 
+def noise_energy(images: np.ndarray, device: str, batch: int = 500) -> np.ndarray:
+    """Return the squared noise residual (image minus median 3x3), summed over the colors. Shape (N, SIZE, SIZE)."""
+    out = []
+    for i in range(0, len(images), batch):
+        x = to_tensor(images[i:i + batch], device)
+        out.append(((x - smooth(x, "median3")) ** 2).sum(1).cpu().numpy())
+    return np.concatenate(out).astype(np.float64)
+
+
+def refine_scan(energy: np.ndarray, patch_prob: np.ndarray, answer: np.ndarray, radius: int, pad: int,
+                lam: float, offset: float) -> np.ndarray:
+    """Move each side of the answer by up to radius pixels to the best rectangle of the scan statistic.
+
+    The noise residual inside the patch has a larger variance than around it. For a box B in the window W
+    (the answer with pad pixels on each side) and the ring R = W - B, the log-likelihood ratio of two variances is
+    n_W log(v_W) - n_B log(v_B) - n_R log(v_R), with v the mean of the energy. It is positive only if v_B > v_R.
+    lam adds the UNet evidence sum_B(p - offset): the UNet tells which noise rectangle is the patch.
+    """
+    d = np.arange(-radius, radius + 1)
+    offsets = np.stack(np.meshgrid(d, d, d, d, indexing="ij"), -1).reshape(-1, 4)
+    out = answer.copy()
+    for i in range(0, len(answer), 500):
+        a = answer[i:i + 500]
+        te, tp = integral(energy[i:i + 500]), integral(patch_prob[i:i + 500] - offset)
+        boxes = np.clip(a[:, None] + offsets[None], 0, SIZE)
+        window = np.clip(a + np.array([-pad, -pad, pad, pad]), 0, SIZE)[:, None]
+        boxes = np.concatenate([np.maximum(boxes[..., :2], window[..., :2]), np.minimum(boxes[..., 2:], window[..., 2:])], -1)
+        n_b = ((boxes[..., 2] - boxes[..., 0]) * (boxes[..., 3] - boxes[..., 1])).astype(np.float64)
+        n_w = ((window[..., 2] - window[..., 0]) * (window[..., 3] - window[..., 1])).astype(np.float64)
+        e_b, e_w = box_sums(te, boxes), box_sums(te, window)
+        n_r = np.maximum(n_w - n_b, 1)
+        v_b, v_r, v_w = e_b / np.maximum(n_b, 1) + 1e-12, (e_w - e_b) / n_r + 1e-12, e_w / n_w + 1e-12
+        llr = n_w * np.log(v_w) - n_b * np.log(v_b) - n_r * np.log(v_r)
+        llr = np.where(v_b > v_r, llr, -llr) / n_w
+        score = llr + lam * box_sums(tp, boxes) / n_w
+        score = np.where(allowed(boxes), score, -np.inf)
+        best = boxes[np.arange(len(a)), score.argmax(1)]
+        has = (a != 0).any(1)
+        out[i:i + 500][has] = best[has]
+    return out
+
+
 def refine_soft(patch_prob: np.ndarray, answer: np.ndarray, radius: int, gamma: float, pad: int) -> np.ndarray:
     """Move each side of the answer by up to radius pixels to the largest expected IoU with the mask p ** gamma.
 
@@ -251,7 +293,7 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
     thresholds = np.linspace(*cfg["thresholds"])
 
     rows, diagnostics = [], {}
-    inputs_key, inputs, box_inputs = None, None, None
+    inputs_key, inputs, box_inputs, energy = None, None, None, None
     for model_name, codenames in cfg["models"].items():
         unet = load_ensemble(codenames, device)
         # The input maps depend on the config of the models. All models of one ensemble need the same input.
@@ -285,6 +327,17 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
 
         variants = cfg.get("variants", ["causal", "selector", "jpeg"])
         settings = {"base": params, "soft": params_soft}
+
+        # scan: the scan statistic of the noise variance near the base answer, plus lam * the UNet evidence.
+        if "scan" in variants:
+            if energy is None:
+                energy = {k: noise_energy(img, device) for k, img in images_of.items()}
+            scan = lambda k, lam, pad: refine_scan(energy[k], cand[k]["probs"][:, 0], answers["base"][k],
+                                                   cfg["scan_radius"], pad, lam, offset)
+            grid = [(lam, pad) for lam in cfg["scan_lams"] for pad in cfg["scan_pads"]]
+            lam, pad = max(grid, key=lambda lp: points_array(true["tune"], scan("tune", *lp)).mean())
+            answers["scan"] = {k: scan(k, lam, pad) for k in cand}
+            settings["scan"] = {"lam": lam, "pad": pad}
 
         # BoxNet: refine the edges of the base and of the soft answers with the trained BoxNet of cfg boxnet.
         if cfg.get("boxnet"):

@@ -261,3 +261,5 @@
   - `fit_offsets`: the offset of the fitted boxes is tuned on the tune part. unet-v4 to unet-v8 used 0.3.
   - `boxnet`: the variants `boxnet` and `soft_boxnet` refine the base and the soft answers with a trained BoxNet (`load_boxnet` in `src/boxnet.py`).
   - `variants`: the list of the other variants (causal, selector, jpeg). post-v1 showed that they do not help, so post-v2 can skip them.
+- The fitted boxes already search all boxes of an allowed size (approximately 700 sizes and 1 million boxes on each image). Thus the limit is the score of the boxes, not the search.
+- New variant `scan` in `src/post.py`: the scan statistic of the noise variance. For each box near the answer (each side ±radius pixels), the log-likelihood ratio compares the variance of the noise residual inside the box and in a ring around it. A weight lam adds the UNet evidence, because a decoy also has a high noise variance. lam and the ring size are tuned on the tune part.
