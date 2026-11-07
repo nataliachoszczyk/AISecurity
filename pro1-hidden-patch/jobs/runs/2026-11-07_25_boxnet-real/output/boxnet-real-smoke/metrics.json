@@ -1,0 +1,7 @@
+{
+  "codename": "boxnet-real-smoke",
+  "jitter_iou_before_tune": 0.7385587604008723,
+  "jitter_iou_after_tune": 0.6764477276465235,
+  "jitter_iou_before_val": 0.7287920897822708,
+  "jitter_iou_after_val": 0.7093681377911324
+}
