@@ -12,8 +12,8 @@ The local machine needs these items:
 |---|---|---|
 | Kaggle account | kaggle.com | Do the phone verification (Settings). Without it, a kernel gets no GPU and no internet. |
 | Python environment | `.venv` in the root folder of the repository | Make it with uv (see the README or the instructions of the repository). |
-| Kaggle CLI | the package `kaggle` in `requirements.txt` | Install it into `.venv`. Version 2.2.5 works. Then the command is `.venv/bin/kaggle`. |
-| API token | `~/.kaggle/access_token` | On kaggle.com, open Settings, API, and generate a new token. Write the token into this file as one line. |
+| Kaggle CLI | the package `kaggle` in `requirements.txt` | Install it into `.venv`. Version 2.2.5 works. Call it only through `jobs/kaggle.sh`. |
+| API token | `~/.kaggle/access_token` or `.kaggle/access_token` of the project | On kaggle.com, open Settings, API, and generate a new token. Write the token into the file as one line. |
 | Access to the data | the private Kaggle dataset of the project | The owner of the dataset shares it with the account. |
 | Git remote | a public repository with the project branch | The kernels clone the code from it (section 4). |
 
@@ -26,7 +26,29 @@ Do these steps:
    uv pip install --python .venv -r requirements.txt
    ```
 
-2. Write the token into the file and protect the file:
+2. Write the token into a file (see "Select the Kaggle account").
+3. Do a test of the connection. The command shows the kernels of the account:
+
+   ```bash
+   bash jobs/kaggle.sh kernels list --mine
+   ```
+
+Do not commit the token. It gives full access to the account.
+
+### Select the Kaggle account
+
+The script `jobs/kaggle.sh` selects the token. Then it runs the Kaggle CLI from `.venv`. People, agents and other scripts use the same command. Nobody sets an environment variable or gives the token in a command.
+
+| Token file | Account |
+|---|---|
+| `.kaggle/access_token` in the project folder, not empty | The account of the project. Only this project uses it. |
+| No project token | The personal account of the machine (`~/.kaggle/access_token`). All projects without a project token use it. |
+
+The project token has priority. The script gives it to the CLI in the variable `KAGGLE_API_TOKEN`.
+
+To use the personal account, do these steps once on each machine:
+
+1. Write the token into the file:
 
    ```bash
    mkdir -p ~/.kaggle
@@ -34,13 +56,50 @@ Do these steps:
    chmod 600 ~/.kaggle/access_token
    ```
 
-3. Do a test of the connection. The command shows the kernels of the account:
+2. Make sure that the project has no `.kaggle/access_token`, or that the file is empty.
+
+To use a different account for one project, do these steps in the project folder:
+
+1. Make sure that `.gitignore` has the line `.kaggle/`.
+2. Write the token of the project account into the file:
 
    ```bash
-   .venv/bin/kaggle kernels list --mine
+   mkdir -p .kaggle
+   echo "<token>" > .kaggle/access_token
+   chmod 600 .kaggle/access_token
    ```
 
-Do not commit the token. It gives full access to the account.
+3. Check the account. The line `username` must show the project account:
+
+   ```bash
+   bash jobs/kaggle.sh config view
+   ```
+
+`.gitignore` prevents an accidental commit of the token. It does not hide the token from a program of the same user.
+
+### `jobs/kaggle.sh`
+
+```bash
+#!/usr/bin/env bash
+# Run the Kaggle CLI of the project with the correct account.
+# Usage: bash jobs/kaggle.sh <arguments of the kaggle command>
+# If .kaggle/access_token of the project is not empty, the CLI uses this token.
+# Otherwise the CLI uses the personal credentials (~/.kaggle/access_token).
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TOKEN="$ROOT/.kaggle/access_token"
+# The value, not the path: a Windows Python does not know the Git Bash paths.
+if [ -s "$TOKEN" ]; then
+  export KAGGLE_API_TOKEN="$(tr -d '[:space:]' < "$TOKEN")"
+fi
+for KAGGLE in "$ROOT/.venv/Scripts/kaggle.exe" "$ROOT/.venv/bin/kaggle"; do
+  [ -x "$KAGGLE" ] && exec "$KAGGLE" "$@"
+done
+echo "kaggle.sh: no Kaggle CLI in $ROOT/.venv" >&2
+exit 127
+```
+
+The script looks for `.kaggle/` and `.venv/` in the folder above `jobs/`. Change `ROOT` for a different structure. The examples in this document call the script from the project folder.
 
 ## 2. Platform facts
 
@@ -62,8 +121,8 @@ Important behavior:
 - If a kernel fails (status ERROR), Kaggle deletes its complete output. Hours of results can be lost.
 - The CLI cannot stop a kernel. Only the web page can cancel it.
 - The CLI does not give the version ID of a run. Thus use one kernel (notebook) for each job, not many versions of one kernel.
-- `kaggle kernels logs -f <user>/<project>-<job name>` shows the live log. The output of child processes is sometimes not in it.
-- Use `kaggle kernels status <user>/<project>-<job name>` for the state: QUEUED, RUNNING, COMPLETE, ERROR or CANCEL.
+- `bash jobs/kaggle.sh kernels logs -f <user>/<project>-<job name>` shows the live log. The output of child processes is sometimes not in it.
+- Use `bash jobs/kaggle.sh kernels status <user>/<project>-<job name>` for the state: QUEUED, RUNNING, COMPLETE, ERROR or CANCEL.
 
 ## 3. Repository structure
 
@@ -72,6 +131,7 @@ Important behavior:
   src/                    all logic (Python modules)
   jobs/
     JOBS.md               the list of all jobs and their status
+    kaggle.sh             runs the Kaggle CLI with the token of the project or the personal token
     wait.sh               follows one kernel and writes its status into JOBS.md
     runs/
       YYYY-MM-DD_NN_<job>/  one folder for each job (NN: the number of the job in the project)
@@ -104,7 +164,7 @@ The job folder `YYYY-MM-DD_NN_<job name>` identifies a job. NN is the number of 
 - A job is one Kaggle kernel. A job can run more than one experiment (codename), for example one on each GPU.
 - The config of an experiment is in the folder of the job that runs it. There is no separate folder for configs.
 - The folder of a job does not change after the start. A new variant gets a new folder.
-- The job folders are in `jobs/runs/`. Thus `jobs/` shows only `JOBS.md`, `wait.sh` and `runs/`, also when there are many jobs.
+- The job folders are in `jobs/runs/`. Thus `jobs/` shows only `JOBS.md`, `kaggle.sh`, `wait.sh` and `runs/`, also when there are many jobs.
 - `output/` keeps only small files. Data, model weights and caches stay on Kaggle.
 
 A function finds a config from its codename:
@@ -173,6 +233,8 @@ Clone into `/tmp`, not into `/kaggle/working`. Otherwise the clone becomes a par
 ```
 
 For a CPU job, use `"enable_gpu": false` and remove `machine_shape`.
+
+The `<user>` in the `id` must be the username of the account that `jobs/kaggle.sh` selects. Otherwise the push and the status fail with "Permission denied".
 
 ### `run.py` for one experiment on one GPU
 
@@ -268,7 +330,7 @@ The push sends `run.py` and `kernel-metadata.json` of the job folder to Kaggle a
 
 ```bash
 # From the project folder:
-kaggle kernels push -p jobs/runs/YYYY-MM-DD_NN_<job name>
+bash jobs/kaggle.sh kernels push -p jobs/runs/YYYY-MM-DD_NN_<job name>
 ```
 
 Output if the push is correct:
@@ -282,7 +344,7 @@ The first push makes the kernel. A second push of the same folder makes version 
 If two GPU sessions are active, the push fails. This loop tries again until a slot is free, and then follows the job:
 
 ```bash
-until out=$(kaggle kernels push -p jobs/runs/YYYY-MM-DD_NN_<job name> 2>&1); echo "$(date +%H:%M) $out" | tail -1; echo "$out" | grep -q "successfully pushed"; do sleep 90; done; bash jobs/wait.sh <user>/<project>-<job name> <job name>
+until out=$(bash jobs/kaggle.sh kernels push -p jobs/runs/YYYY-MM-DD_NN_<job name> 2>&1); echo "$(date +%H:%M) $out" | tail -1; echo "$out" | grep -q "successfully pushed"; do sleep 90; done; bash jobs/wait.sh <user>/<project>-<job name> <job name>
 ```
 
 ### `jobs/wait.sh`
@@ -292,11 +354,9 @@ until out=$(kaggle kernels push -p jobs/runs/YYYY-MM-DD_NN_<job name> 2>&1); ech
 # Follow a Kaggle kernel until it stops. Write each status change into JOBS.md.
 # Usage: bash wait.sh <owner/kernel-slug> "<job name in the JOBS.md row>"
 DIR="$(dirname "$0")"
-KAGGLE="$DIR/../../.venv/Scripts/kaggle"
-[ -x "$KAGGLE" ] || [ -x "$KAGGLE.exe" ] || KAGGLE="$DIR/../../.venv/bin/kaggle"  # Linux and macOS
 last=""
 while true; do
-  raw=$("$KAGGLE" kernels status "$1" 2>&1)
+  raw=$(bash "$DIR/kaggle.sh" kernels status "$1" 2>&1)
   case "$raw" in
     *QUEUED*) status="queued" ;;
     *RUNNING*) status="running" ;;
@@ -315,7 +375,7 @@ while true; do
 done
 ```
 
-The path to the `kaggle` command assumes a `.venv` two levels above `jobs/`. Change it for a different structure.
+`wait.sh` calls `kaggle.sh`. Thus it uses the same account as the push.
 
 The job folder `jobs/runs/YYYY-MM-DD_NN_<job name>/` has the kernel `<user>/<project>-<job name>` and the row `<job name>` in `JOBS.md`. The call:
 
@@ -350,11 +410,11 @@ Run it as a background task, because it waits until the kernel stops (minutes or
 
 ## 8. Outputs
 
-1. List the files and their sizes: `kaggle kernels files <user>/<project>-<job name>`.
+1. List the files and their sizes: `bash jobs/kaggle.sh kernels files <user>/<project>-<job name>`.
 2. Download only the small files into the output folder of the job:
 
    ```bash
-   kaggle kernels output <user>/<project>-<job name> -p jobs/runs/YYYY-MM-DD_NN_<job name>/output --file-pattern '(json|csv|png)$'
+   bash jobs/kaggle.sh kernels output <user>/<project>-<job name> -p jobs/runs/YYYY-MM-DD_NN_<job name>/output --file-pattern '(json|csv|png)$'
    ```
 
    The pattern is a regular expression for the complete path. Do not start it with `^`.
