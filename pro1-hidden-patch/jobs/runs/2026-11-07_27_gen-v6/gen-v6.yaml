@@ -1,0 +1,17 @@
+# gen-v5 with seed 6 on the account nataliachoszczyk. gen-v4 with a new seed and base_aug: a crop of the clean bases and a change of brightness, contrast and color.
+# The val part is small, because the UNet jobs use the val part of gen-v4.
+seed: 6
+train_copies: 64
+val_copies: 2
+hflip: true
+base_aug: true
+batch: 2048
+# The train part stops after this time. The limit of a Kaggle session is 12 hours.
+hours: 9.5
+# Parameters of saliency-v1 from its Kaggle run (kaggle-jobs/2026-10-31_02_saliency/saliency-v1/metrics.json).
+saliency_tie: 0.9
+saliency_threshold: 1.85
+# The tune part of the UNet (src/evaluate.py tune_ids): the same values as tune_fraction and seed in the UNet configs.
+tune_fraction: 0.1
+tune_seed: 0
+jpeg: [80, 95]
