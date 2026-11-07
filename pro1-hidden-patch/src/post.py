@@ -19,7 +19,7 @@ import torch
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.model_selection import GroupKFold
 
-from .config import PROJECT_DIR
+from .config import PROJECT_DIR, load_config
 from .eda import SIZE, load_images, load_model, load_test_ids
 from .evaluate import BOX, eval_set, points_array, tune_ids
 from .generate import jpeg, load_set
@@ -246,15 +246,21 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
         test_ids, test_images = test_ids[:cfg["smoke"]], test_images[:cfg["smoke"]]
     quality = {k: jpeg_qualities(lab) for k, (lab, _) in sets.items()} | {"test": jpeg_qualities(None, test_ids)}
     true = {k: lab[BOX].to_numpy() for k, (lab, _) in sets.items()}
-    inputs = {k: unet_inputs(resnet, img, cfg, device) for k, (_, img) in sets.items()}
-    inputs["test"] = unet_inputs(resnet, test_images, cfg, device)
     images_of = {k: img for k, (_, img) in sets.items()} | {"test": test_images}
     scored = ["tune", "val", "gen_val"]
     thresholds = np.linspace(*cfg["thresholds"])
 
     rows, diagnostics = [], {}
+    inputs_key, inputs = None, None
     for model_name, codenames in cfg["models"].items():
         unet = load_ensemble(codenames, device)
+        # The input maps depend on the config of the models. All models of one ensemble need the same input.
+        use_act = {bool(load_config(c).get("use_act")) for c in codenames}
+        assert len(use_act) == 1, f"{model_name}: the models need different inputs"
+        model_cfg = cfg | {"use_act": use_act.pop()}
+        if inputs_key != model_cfg["use_act"]:
+            inputs_key = model_cfg["use_act"]
+            inputs = {k: unet_inputs(resnet, img, model_cfg, device) for k, img in images_of.items()}
         cand = {k: analyze(resnet, unet, images_of[k], cfg, device, inputs[k]) for k in images_of}
         params = tune(sets["tune"][0], cand["tune"], thresholds)
         rule, th = params["rule"], params["threshold"]

@@ -234,3 +234,7 @@
 - Job `2026-11-07_22_unet-v9`: unet-v9a (unet-v8b with `use_act`) and unet-v9b (unet-v8b with width 96 and 160 epochs). Width 32 to 64 gave +0.02 and 100 to 200 epochs gave +0.011, so a larger UNet can help. GPU smoke test first: `2026-11-07_23_unet-v9-smoke`.
 - New option `base_aug` in `src/generate.py`. Each generated image changes its base before the attack: a random crop (48-64 pixels, resized to 64) of the clean bases, and a random brightness, contrast and color. The class check rejects a change that changes the ResNet-18 class. The aim: less similar copies of the approximately 800 bases.
 - Job `2026-11-07_24_gen-v5`: gen-v5 (gen-v4 with seed 5 and `base_aug`). Its smoke test runs first in the same session.
+- unet-v9 smoke test passed. The input maps (integrated gradients and activation maps) of 35k images take approximately 19 minutes. One epoch with width 96 takes approximately 110-140 seconds.
+- New option `attn` in `src/unet.py`: transformer layers over the 64 places of the deepest UNet level (as in TransUNet). The choice between the patch and a decoy compares two noise rectangles of one image.
+- New option `generated_sets` in `src/unet.py`: the UNet learns on the train parts of several generated sets (for example gen-v4 and gen-v5). `generated_dir(name)` finds the zip of each set. The generated val set stays the one of gen-v4.
+- `src/post.py` now calculates the input maps with the config of each model, so it also works with `use_act`.
