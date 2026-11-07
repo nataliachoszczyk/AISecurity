@@ -238,3 +238,19 @@
 - New option `attn` in `src/unet.py`: transformer layers over the 64 places of the deepest UNet level (as in TransUNet). The choice between the patch and a decoy compares two noise rectangles of one image.
 - New option `generated_sets` in `src/unet.py`: the UNet learns on the train parts of several generated sets (for example gen-v4 and gen-v5). `generated_dir(name)` finds the zip of each set. The generated val set stays the one of gen-v4.
 - `src/post.py` now calculates the input maps with the config of each model, so it also works with `use_act`.
+- post-v1 results (job `2026-11-07_21_post-v1`). Val points lost by unet-v8b (total 0.324):
+
+  | Error kind | Lost points |
+  |---|---|
+  | Hit with a low IoU (mean IoU 0.71, only 27% of the hits have IoU 0.9 or more) | 0.203 |
+  | Miss (the box is not on the patch and not on a decoy) | 0.042 |
+  | 0,0,0,0 on an image with a patch | 0.038 |
+  | Box on a decoy | 0.026 |
+  | Box on an image without a patch | 0.014 |
+
+  - Upper bounds on val: a perfect 0,0,0,0 decision gives 0.698, a perfect choice among the candidates gives 0.731.
+  - Variants (val, paired difference to the base): soft +0.002 (standard error 0.001), causal -0.063, selector -0.011, jpeg +0.002. The mean of unet-v8a and unet-v8b: val 0.677.
+  - Decision: a better choice or decision cannot reach 0.70. The edges of the boxes are the main problem.
+- New module `src/boxnet.py`: a second stage that refines the edges of a candidate box. BoxNet gets the input maps and the candidate box. It averages its features along each edge of the candidate, because the evidence of a whole edge adds up. Then it classifies the position of each edge in a window of ±8 pixels. A second head predicts the IoU of the candidate.
+- `jobs/kaggle.sh`: with `KAGGLE_PERSONAL=1`, the CLI uses the personal account (nataliachoszczyk) and not the project token.
+- Jobs `2026-11-07_25_boxnet-real` (nataliachoszczyk, real images only, also the smoke test of BoxNet) and `2026-11-07_26_boxnet-v1` (jankombajn, real and gen-v4 images, refines the unet-v8 answers).

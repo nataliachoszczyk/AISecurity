@@ -1,0 +1,22 @@
+# BoxNet on the real and the gen-v4 train images. It refines the answers of the mean of unet-v8a and unet-v8b.
+seed: 0
+tune_fraction: 0.1
+use_ig: true
+ig_steps: 8
+use_act: true
+batch_causal: 250
+chunk: 1500
+width: 48
+window: 8
+jitter: 6
+p_patch: 0.75
+batch: 128
+lr: 0.002
+weight_decay: 0.0001
+epochs: 40
+generated: true
+candidates_from: [unet-v8a, unet-v8b]
+boxes: fit
+fit_offset: 0.3
+candidates: 6
+thresholds: [0.0, 3.0, 61]

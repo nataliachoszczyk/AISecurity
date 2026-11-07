@@ -1,0 +1,16 @@
+# BoxNet on the real train images without the tune part. No generated images and no UNet candidates.
+seed: 0
+tune_fraction: 0.1
+use_ig: true
+ig_steps: 8
+use_act: true
+batch_causal: 250
+chunk: 1500
+width: 48
+window: 8
+jitter: 6
+p_patch: 0.75
+batch: 128
+lr: 0.002
+weight_decay: 0.0001
+epochs: 150
