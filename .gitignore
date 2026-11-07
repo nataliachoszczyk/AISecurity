@@ -17,6 +17,8 @@ venv/
 CLAUDE.local.md
 .claude/settings.local.json
 kaggle.json
+# Kaggle token of one project (jobs/kaggle.sh)
+.kaggle/
 .vscode/
 .idea/
 

@@ -215,3 +215,17 @@
   - Separate thresholds for test images with a JPEG quality below 90, tuned on the generated val set. On the generated val set, unet-v8b gets 0.528 for quality 80-89 and 0.584 for 90-95.
   - The mean mask of unet-v8a and unet-v8b (two seeds).
   - 300 epochs. Both unet-v8 runs selected the last epoch.
+
+## 2026-11-07
+
+- New branch `pro1-experiments` from `pro1` for more experiments. The aim is a val score above 0.69 (unet-v8b: 0.676).
+- Note: val has 500 images, so the standard error of the val score is approximately 0.018. The checkpoints of unet-v8b from epoch 164 to 199 give val 0.661-0.676. Thus the reports now also give the paired difference to the base on the same val images, with its standard error.
+- The project uses the Kaggle account `jankombajn` with a project token (`.kaggle/access_token`, not in git). New script `jobs/kaggle.sh` (from `KAGGLE.md`) selects the token. `jobs/wait.sh` now calls it.
+- New module `src/post.py`: diagnostics and post-processing on the masks of trained UNets, without new training.
+  - Diagnostics: the lost points of each error kind (no answer, a decoy, a miss, a low IoU, a box on an image without a patch), the IoU of the hits, and two upper bounds (a perfect 0,0,0,0 decision, a perfect choice of a candidate).
+  - soft: a search of boxes near the answer (each side ±3 pixels) for the largest expected IoU with the patch mask.
+  - causal: each side of the box moves inwards while the ResNet-18 margin drop stays.
+  - selector: gradient boosting predicts the IoU of each candidate. It learns on the tune part and the generated val set, with 5 folds grouped by the base image.
+  - jpeg: a separate threshold for test images with a JPEG quality below 90. It is tuned on the generated val images with JPEG 80-89 and on the tune images without a patch, saved again as JPEG 80-88.
+- `unet.analyze()` can get the UNet input that is already calculated, so the integrated gradients map is calculated only once for all models.
+- Jobs `2026-11-07_20_post-smoke` (Kaggle CPU) and `2026-11-07_21_post-v1` (Kaggle GPU) on unet-v8a, unet-v8b and their mean.

@@ -254,8 +254,10 @@ def fitted_boxes(probs: np.ndarray, offset: float, k: int) -> tuple[np.ndarray, 
     return boxes, patch_prob
 
 
-def analyze(resnet, unet, images: np.ndarray, cfg: dict, device: str) -> dict:
-    inputs = unet_inputs(resnet, images, cfg, device)
+def analyze(resnet, unet, images: np.ndarray, cfg: dict, device: str, inputs: np.ndarray | None = None) -> dict:
+    """Return the candidates and their causal drops. inputs: the result of unet_inputs, if it is already calculated."""
+    if inputs is None:
+        inputs = unet_inputs(resnet, images, cfg, device)
     probs = predict_masks(unet, inputs, device)
     if cfg.get("boxes") == "fit":
         boxes, patch_prob = fitted_boxes(probs, cfg["fit_offset"], cfg["candidates"])

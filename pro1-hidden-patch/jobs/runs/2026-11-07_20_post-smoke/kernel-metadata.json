@@ -1,0 +1,13 @@
+{
+  "id": "jankombajn/bumas-p1-post-smoke",
+  "title": "bumas-p1-post-smoke",
+  "code_file": "run.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["jankombajn/bumas-p1-hidden-patch"],
+  "competition_sources": [],
+  "kernel_sources": ["jankombajn/bumas-p1-gen-v4", "jankombajn/bumas-p1-unet-v8"]
+}
