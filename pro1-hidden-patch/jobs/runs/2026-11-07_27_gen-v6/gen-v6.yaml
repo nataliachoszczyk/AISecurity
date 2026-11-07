@@ -1,8 +1,8 @@
 # gen-v5 with seed 6 on the account nataliachoszczyk. gen-v4 with a new seed and base_aug: a crop of the clean bases and a change of brightness, contrast and color.
-# The val part is small, because the UNet jobs use the val part of gen-v4.
+# The val part is small, because the UNet jobs use the val part of gen-v4. Version 2: 8 val copies (2 gave only 17 C&W images, and the strength check failed).
 seed: 6
 train_copies: 64
-val_copies: 2
+val_copies: 8
 hflip: true
 base_aug: true
 batch: 2048
