@@ -251,7 +251,7 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
     thresholds = np.linspace(*cfg["thresholds"])
 
     rows, diagnostics = [], {}
-    inputs_key, inputs = None, None
+    inputs_key, inputs, box_inputs = None, None, None
     for model_name, codenames in cfg["models"].items():
         unet = load_ensemble(codenames, device)
         # The input maps depend on the config of the models. All models of one ensemble need the same input.
@@ -261,8 +261,14 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
         if inputs_key != model_cfg["use_act"]:
             inputs_key = model_cfg["use_act"]
             inputs = {k: unet_inputs(resnet, img, model_cfg, device) for k, img in images_of.items()}
-        cand = {k: analyze(resnet, unet, images_of[k], cfg, device, inputs[k]) for k in images_of}
-        params = tune(sets["tune"][0], cand["tune"], thresholds)
+        # fit_offsets: tune the offset of the fitted boxes on the tune part (unet-v4 to v8 used 0.3).
+        offsets = cfg.get("fit_offsets", [cfg["fit_offset"]])
+        tune_of = lambda o: tune(sets["tune"][0], analyze(resnet, unet, images_of["tune"], cfg | {"fit_offset": o},
+                                                          device, inputs["tune"]), thresholds)["tune_score"]
+        offset = max(offsets, key=tune_of) if len(offsets) > 1 else offsets[0]
+        run_cfg = cfg | {"fit_offset": offset}
+        cand = {k: analyze(resnet, unet, images_of[k], run_cfg, device, inputs[k]) for k in images_of}
+        params = tune(sets["tune"][0], cand["tune"], thresholds) | {"fit_offset": offset}
         rule, th = params["rule"], params["threshold"]
         answers = {"base": {k: choose(c, rule, th) for k, c in cand.items()}}
         pre = {k: choose(c, rule, -np.inf) for k, c in cand.items()}
@@ -277,54 +283,73 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
         answers["soft"] = {k: soft(k, g, p) for k in cand}
         params_soft = {"gamma": g, "pad": p}
 
+        variants = cfg.get("variants", ["causal", "selector", "jpeg"])
+        settings = {"base": params, "soft": params_soft}
+
+        # BoxNet: refine the edges of the base and of the soft answers with the trained BoxNet of cfg boxnet.
+        if cfg.get("boxnet"):
+            from .boxnet import load_boxnet, refine as boxnet_refine
+            boxnet = load_boxnet(cfg["boxnet"], device)
+            if box_inputs is None:
+                box_inputs = {k: unet_inputs(resnet, img, cfg | {"use_act": True}, device) for k, img in images_of.items()}
+            for name, start in [("boxnet", "base"), ("soft_boxnet", "soft")]:
+                answers[name] = {k: boxnet_refine(boxnet, box_inputs[k], answers[start][k], device, cfg.get("boxnet_iters", 1))[0]
+                                 for k in cand}
+                settings[name] = {"boxnet": cfg["boxnet"]}
+
         # B2: causal refinement of the base boxes, tuned on the tune part.
-        side = {k: side_drops(resnet, images_of[k], pre[k], cfg["causal_shift"], cfg, device) for k in cand}
-        refined = lambda k, t: np.where((answers["base"][k] == 0).all(1, keepdims=True), 0, refine_causal(side[k], t))
-        tie = max(cfg["causal_ties"], key=lambda t: points_array(true["tune"], refined("tune", t)).mean())
-        answers["causal"] = {k: refined(k, tie) for k in cand}
+        if "causal" in variants:
+            side = {k: side_drops(resnet, images_of[k], pre[k], cfg["causal_shift"], cfg, device) for k in cand}
+            refined = lambda k, t: np.where((answers["base"][k] == 0).all(1, keepdims=True), 0, refine_causal(side[k], t))
+            tie = max(cfg["causal_ties"], key=lambda t: points_array(true["tune"], refined("tune", t)).mean())
+            answers["causal"] = {k: refined(k, tie) for k in cand}
+            settings["causal"] = {"tie": tie}
 
-        # B3: the selector. Cross-validation on tune + gen_val, grouped by the base image (gen_val has 20 copies of each base).
-        feats = {k: candidate_features(cand[k], quality[k]) for k in cand}
-        target = {k: box_iou(cand[k]["boxes"], true[k][:, None]) for k in ["tune", "gen_val"]}
-        x = np.concatenate([feats["tune"], feats["gen_val"]])
-        y = np.concatenate([target["tune"], target["gen_val"]])
-        groups = np.concatenate([sets["tune"][0].id.to_numpy(), "gen_" + sets["gen_val"][0].base.astype(str).to_numpy()])
-        k_cand = x.shape[1]
-        oof = np.zeros(y.shape)
-        for fit, held in GroupKFold(cfg["selector_folds"]).split(x, groups=groups):
-            model = selector_model(cfg).fit(x[fit].reshape(-1, x.shape[-1]), y[fit].ravel())
-            oof[held] = model.predict(x[held].reshape(-1, x.shape[-1])).reshape(-1, k_cand)
-        n_tune = len(feats["tune"])
-        oof_of = {"tune": oof[:n_tune], "gen_val": oof[n_tune:]}
-        # Only the tune part has images without a patch, so the threshold uses only the tune part.
-        _, q = best_threshold(true["tune"], lambda t: select(cand["tune"], oof_of["tune"], t),
-                              np.linspace(*cfg["selector_thresholds"]))
-        model = selector_model(cfg).fit(x.reshape(-1, x.shape[-1]), y.ravel())
-        pred = {k: model.predict(feats[k].reshape(-1, x.shape[-1])).reshape(-1, k_cand) for k in cand}
-        # tune and gen_val get the out-of-fold answers, so their score is not biased.
-        pred |= oof_of
-        answers["selector"] = {k: select(cand[k], pred[k], q) for k in cand}
-        answers["selector_soft"] = {
-            k: refine_soft(cand[k]["probs"][:, 0], answers["selector"][k], cfg["soft_radius"], g, p) for k in cand}
+        if "selector" in variants:
+            # B3: the selector. Cross-validation on tune + gen_val, grouped by the base image (gen_val has 20 copies of each base).
+            feats = {k: candidate_features(cand[k], quality[k]) for k in cand}
+            target = {k: box_iou(cand[k]["boxes"], true[k][:, None]) for k in ["tune", "gen_val"]}
+            x = np.concatenate([feats["tune"], feats["gen_val"]])
+            y = np.concatenate([target["tune"], target["gen_val"]])
+            groups = np.concatenate([sets["tune"][0].id.to_numpy(), "gen_" + sets["gen_val"][0].base.astype(str).to_numpy()])
+            k_cand = x.shape[1]
+            oof = np.zeros(y.shape)
+            for fit, held in GroupKFold(cfg["selector_folds"]).split(x, groups=groups):
+                model = selector_model(cfg).fit(x[fit].reshape(-1, x.shape[-1]), y[fit].ravel())
+                oof[held] = model.predict(x[held].reshape(-1, x.shape[-1])).reshape(-1, k_cand)
+            n_tune = len(feats["tune"])
+            oof_of = {"tune": oof[:n_tune], "gen_val": oof[n_tune:]}
+            # Only the tune part has images without a patch, so the threshold uses only the tune part.
+            _, q = best_threshold(true["tune"], lambda t: select(cand["tune"], oof_of["tune"], t),
+                                  np.linspace(*cfg["selector_thresholds"]))
+            model = selector_model(cfg).fit(x.reshape(-1, x.shape[-1]), y.ravel())
+            pred = {k: model.predict(feats[k].reshape(-1, x.shape[-1])).reshape(-1, k_cand) for k in cand}
+            # tune and gen_val get the out-of-fold answers, so their score is not biased.
+            pred |= oof_of
+            answers["selector"] = {k: select(cand[k], pred[k], q) for k in cand}
+            answers["selector_soft"] = {
+                k: refine_soft(cand[k]["probs"][:, 0], answers["selector"][k], cfg["soft_radius"], g, p) for k in cand}
 
-        # B4: a separate threshold for JPEG below 90. The tuning set: generated patches with JPEG 80-89 and the
-        # tune images without a patch at JPEG 80-88, with the weights of the task (80% patch, 20% no patch).
-        low_gen = quality["gen_val"] < LOW_JPEG
-        mix_cand = {key: np.concatenate([cand["gen_val"][key][low_gen], cand["low_jpeg"][key]])
-                    for key in ["boxes", "patch_prob", "drops", "margin"]}
-        mix_true = np.concatenate([true["gen_val"][low_gen], true["low_jpeg"]])
-        n_adv, n_none = int(low_gen.sum()), len(true["low_jpeg"])
-        weights = np.concatenate([np.full(n_adv, 0.8 / max(n_adv, 1)), np.full(n_none, 0.2 / max(n_none, 1))])
-        _, th_low = best_threshold(mix_true, lambda t: choose(mix_cand, rule, t), thresholds, weights)
-        answers["jpeg"] = {}
-        for k, c in cand.items():
-            low = quality[k] < LOW_JPEG
-            a = answers["soft"][k].copy()
-            a[low] = refine_soft(c["probs"][:, 0], choose(c, rule, th_low), cfg["soft_radius"], g, p)[low]
-            answers["jpeg"][k] = a
+            settings |= {"selector": {"threshold": q}, "selector_soft": params_soft | {"threshold": q}}
+        if "jpeg" in variants:
+            # B4: a separate threshold for JPEG below 90. The tuning set: generated patches with JPEG 80-89 and the
+            # tune images without a patch at JPEG 80-88, with the weights of the task (80% patch, 20% no patch).
+            low_gen = quality["gen_val"] < LOW_JPEG
+            mix_cand = {key: np.concatenate([cand["gen_val"][key][low_gen], cand["low_jpeg"][key]])
+                        for key in ["boxes", "patch_prob", "drops", "margin"]}
+            mix_true = np.concatenate([true["gen_val"][low_gen], true["low_jpeg"]])
+            n_adv, n_none = int(low_gen.sum()), len(true["low_jpeg"])
+            weights = np.concatenate([np.full(n_adv, 0.8 / max(n_adv, 1)), np.full(n_none, 0.2 / max(n_none, 1))])
+            _, th_low = best_threshold(mix_true, lambda t: choose(mix_cand, rule, t), thresholds, weights)
+            answers["jpeg"] = {}
+            for k, c in cand.items():
+                low = quality[k] < LOW_JPEG
+                a = answers["soft"][k].copy()
+                a[low] = refine_soft(c["probs"][:, 0], choose(c, rule, th_low), cfg["soft_radius"], g, p)[low]
+                answers["jpeg"][k] = a
 
-        settings = {"base": params, "soft": params_soft, "causal": {"tie": tie}, "selector": {"threshold": q},
-                    "selector_soft": params_soft | {"threshold": q}, "jpeg": params_soft | {"threshold_low": th_low}}
+            settings["jpeg"] = params_soft | {"threshold_low": th_low}
+
         for variant, ans in answers.items():
             row = {"model": model_name, "variant": variant, **{k: float(points_array(true[k], ans[k]).mean()) for k in scored}}
             row["val_delta"], row["val_delta_se"] = paired(true["val"], ans["val"], answers["base"]["val"])
@@ -335,7 +360,7 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
             rows.append(row)
             print(row, flush=True)
             answers_frame(test_ids, ans["test"]).to_csv(out_dir / f"submission_{model_name}_{variant}.csv", index=False)
-        del unet, cand, side
+        del unet, cand
 
     results = pd.DataFrame(rows)
     results.to_csv(out_dir / "results.csv", index=False)

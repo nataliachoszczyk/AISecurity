@@ -257,3 +257,7 @@
 - boxnet-real results (real train images only, 150 epochs, 24 minutes with the smoke test). The check uses patch boxes with random edge changes of up to 3 pixels. Mean IoU on val: 0.738 before BoxNet, 0.762 after. On tune: 0.738 before, 0.775 after. BoxNet works, but the gain is small with only the real images. boxnet-v1 also uses the gen-v4 images.
 - gen-v6 version 1 failed: with 2 val copies, only 17 C&W images were in the strength check, and their median (5.3/255) was too far from the task data (9.6/255). Version 2 uses 8 val copies.
 - The notebooks gen-v4, unet-v8 and gen-v5 of jankombajn are now shared with nataliachoszczyk, and gen-v6 of nataliachoszczyk with jankombajn. Thus both accounts can run all jobs (2 GPU sessions each).
+- `src/post.py` for the final pipeline (post-v2):
+  - `fit_offsets`: the offset of the fitted boxes is tuned on the tune part. unet-v4 to unet-v8 used 0.3.
+  - `boxnet`: the variants `boxnet` and `soft_boxnet` refine the base and the soft answers with a trained BoxNet (`load_boxnet` in `src/boxnet.py`).
+  - `variants`: the list of the other variants (causal, selector, jpeg). post-v1 showed that they do not help, so post-v2 can skip them.

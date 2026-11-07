@@ -186,6 +186,21 @@ def refine(model: BoxNet, inputs: np.ndarray, boxes: np.ndarray, device: str, it
     return np.concatenate(out_boxes), np.concatenate(out_scores)
 
 
+def load_boxnet(codename: str, device: str) -> BoxNet:
+    """Load the boxnet.pt of an earlier run from /kaggle/input (the output of its notebook)."""
+    from .config import load_config
+    from .paths import KAGGLE_INPUT
+    found = sorted(KAGGLE_INPUT.rglob(f"{codename}/boxnet.pt"))
+    assert found, f"no boxnet.pt of {codename} in /kaggle/input"
+    cfg = load_config(codename)
+    state = torch.load(found[0], map_location=device)
+    # The first convolution gets the maps, the residual (3 channels) and the candidate mask (1 channel).
+    model = BoxNet(state["body.0.0.weight"].shape[1] - 7, cfg["width"], cfg["window"])
+    model.load_state_dict(state)
+    print(f"{codename}: {found[0]}", flush=True)
+    return model.to(device).eval()
+
+
 def run_experiment(cfg: dict, device: str | None = None) -> dict:
     """Train BoxNet, then refine the answers of the UNets in cfg candidates_from. Write small reports."""
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
