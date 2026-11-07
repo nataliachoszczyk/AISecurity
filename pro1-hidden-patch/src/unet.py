@@ -84,16 +84,55 @@ def to_tensor(images: np.ndarray, device: str) -> torch.Tensor:
     return torch.from_numpy(np.ascontiguousarray(images)).permute(0, 3, 1, 2).to(device)
 
 
+def resnet_layers(resnet, x: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """Return the logits and the outputs of layer1 (64x64), layer2 (32x32) and layer3 (16x16) of ResNet-18."""
+    h = resnet.relu(resnet.bn1(resnet.conv1((x - resnet.mean) / resnet.std)))
+    feats = []
+    for layer in [resnet.layer1, resnet.layer2, resnet.layer3]:
+        h = layer(h)
+        feats.append(h)
+    h = resnet.layer4(h)
+    return resnet.fc(torch.flatten(resnet.avgpool(h), 1)), feats
+
+
+def activation_maps(resnet, x: torch.Tensor, xs: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+    """Return 6 maps (N, 6, SIZE, SIZE): for layer1-3, the size of the activation change that the noise causes
+    (activations of x minus activations of the smoothed image xs), and its first-order effect on the margin.
+
+    Decoys also change the activations, but only the patch changes them in a direction that moves the decision
+    (Metzen et al. 2017, SentiNet).
+    """
+    with torch.no_grad():
+        _, smooth_feats = resnet_layers(resnet, xs)
+    x = x.detach().requires_grad_(True)
+    logits, feats = resnet_layers(resnet, x)
+    grads = torch.autograd.grad(margin(logits, c).sum(), feats)
+    maps = []
+    for a, s, g in zip(feats, smooth_feats, grads):
+        d = (a - s).detach()
+        maps += [d.norm(dim=1, keepdim=True), (g * d).sum(1, keepdim=True)]
+    maps = torch.cat([F.interpolate(m, size=SIZE) for m in maps], 1)
+    return maps / (maps.abs().amax((2, 3), keepdim=True) + 1e-8)
+
+
 def unet_inputs(resnet, images: np.ndarray, cfg: dict, device: str) -> np.ndarray:
-    """Return the UNet input (N, C, SIZE, SIZE): RGB and, with use_ig, the scaled integrated gradients map."""
+    """Return the UNet input (N, C, SIZE, SIZE): RGB and, with use_ig, the scaled integrated gradients map.
+
+    With use_act, also the 6 maps of activation_maps.
+    """
     parts = []
     for i in range(0, len(images), cfg["batch_causal"]):
         x = to_tensor(images[i:i + cfg["batch_causal"]], device)
-        if cfg["use_ig"]:
+        extra = []
+        if cfg["use_ig"] or cfg.get("use_act"):
             c = resnet(x).argmax(1)
-            ig = integrated_gradients(resnet, x, smooth(x, "median3"), c, cfg["ig_steps"])[:, None]
-            x = torch.cat([x, ig / (ig.abs().amax((2, 3), keepdim=True) + 1e-8)], 1)
-        parts.append(x.detach().cpu().numpy())
+            xs = smooth(x, "median3")
+        if cfg["use_ig"]:
+            ig = integrated_gradients(resnet, x, xs, c, cfg["ig_steps"])[:, None]
+            extra.append(ig / (ig.abs().amax((2, 3), keepdim=True) + 1e-8))
+        if cfg.get("use_act"):
+            extra.append(activation_maps(resnet, x, xs, c))
+        parts.append(torch.cat([x, *extra], 1).detach().cpu().numpy())
     return np.concatenate(parts)
 
 

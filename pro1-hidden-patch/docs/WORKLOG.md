@@ -229,3 +229,6 @@
   - jpeg: a separate threshold for test images with a JPEG quality below 90. It is tuned on the generated val images with JPEG 80-89 and on the tune images without a patch, saved again as JPEG 80-88.
 - `unet.analyze()` can get the UNet input that is already calculated, so the integrated gradients map is calculated only once for all models.
 - Jobs `2026-11-07_20_post-smoke` (Kaggle CPU) and `2026-11-07_21_post-v1` (Kaggle GPU) on unet-v8a, unet-v8b and their mean.
+- The bases of the generated images are only the clean and decoy-only images of the train part without tune (approximately 800). Each base has approximately 40 copies. This can explain the overfit of unet-v8b (train loss 0.35, tune loss 0.81).
+- New option `use_act` in `src/unet.py` (from Metzen et al. 2017 and SentiNet). The UNet gets 6 more maps from ResNet-18: for layer1, layer2 and layer3, the size of the activation change caused by the noise (image against median 3x3), and its first-order effect on the margin. A decoy also changes the activations, but it does not move the decision.
+- Job `2026-11-07_22_unet-v9`: unet-v9a (unet-v8b with `use_act`) and unet-v9b (unet-v8b with width 96 and 160 epochs). Width 32 to 64 gave +0.02 and 100 to 200 epochs gave +0.011, so a larger UNet can help. GPU smoke test first: `2026-11-07_23_unet-v9-smoke`.
