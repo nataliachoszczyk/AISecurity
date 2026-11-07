@@ -1,10 +1,10 @@
-# unet-v8b on the real images and three generated sets (gen-v4, gen-v5 and gen-v6), against the overfit.
+# unet-v8b on the real images and three generated sets (gen-v4, gen-v5 and gen-v6), against the overfit. 120 epochs, so the run stays in the 12-hour limit.
 seed: 0
 tune_fraction: 0.1
 width: 64
 use_ig: true
 ig_steps: 8
-epochs: 200
+epochs: 120
 batch: 64
 lr: 0.05
 weight_decay: 0.0005
