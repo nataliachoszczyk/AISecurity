@@ -303,3 +303,5 @@
   | act2 (unet-v9a and unet-v12) | 0.700 | 0.707 | 0.601 |
 
   - new7 and act2 have almost the same tune points (difference 0.001, much less than the standard error). act2 is better on val (+0.011) and on the generated val set (+0.013), which no step used for a choice. Thus act2 soft is the candidate for the submission. It is the first result above 0.70 on val.
+- End of the experiments (2026-11-08, 11:30). Decision: submit two files, act2 soft (val 0.707) and new7 soft (val 0.696, the best tune points). The files are in the output of `jankombajn/bumas-p1-post-v4` (`post-v4/submission_act2_soft.csv` and `post-v4/submission_new7_soft.csv`). The leaderboard score selects the final file. If the two scores are almost equal, select new7, because the mean of seven models is more stable.
+- Open tasks at the end of the project: merge `pro1-experiments` into `pro1` and `main`, and update the README files.
