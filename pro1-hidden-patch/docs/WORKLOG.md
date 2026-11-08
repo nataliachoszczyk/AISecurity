@@ -293,3 +293,13 @@
 - unet-v12 result (unet-v9a on the three generated sets, 100 epochs): val 0.691, tune 0.698. It is the best single model.
 - The post-v4 smoke test (account nataliachoszczyk) passed. post-v4 runs on jankombajn since 10:15.
 - Next step: read `results.csv` of post-v4. Select the ensemble with the most tune points. Submit only if its val points are more than 0.70.
+- post-v4 results (soft variant; tune / val / gen_val):
+
+  | Ensemble | Tune | Val | Generated val |
+  |---|---|---|---|
+  | six (unet-v8a, v8b, v9a, v9b, v10a, v10b) | 0.692 | 0.697 | 0.583 |
+  | all9 (all nine UNets) | 0.698 | 0.687 | 0.585 |
+  | new7 (all nine without unet-v8a and unet-v8b) | 0.701 | 0.696 | 0.588 |
+  | act2 (unet-v9a and unet-v12) | 0.700 | 0.707 | 0.601 |
+
+  - new7 and act2 have almost the same tune points (difference 0.001, much less than the standard error). act2 is better on val (+0.011) and on the generated val set (+0.013), which no step used for a choice. Thus act2 soft is the candidate for the submission. It is the first result above 0.70 on val.
