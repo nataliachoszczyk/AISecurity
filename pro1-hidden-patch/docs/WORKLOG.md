@@ -287,3 +287,6 @@
 - Job `2026-11-08_35_unet-v14` (nataliachoszczyk): unet-v12 with 2 transformer layers and train_seed 3, for an ensemble.
 - post-v3 results (val, soft variant): unet-v9a 0.686, unet-v9a + unet-v10b 0.690, four models (unet-v9a, unet-v10a, unet-v10b, unet-v8b) 0.690, all six jankombajn models 0.697 (base 0.693). The ensemble of different models gives the largest gain.
 - Job `2026-11-08_36_unet-v15` (jankombajn): unet-v12 with train_seed 4, for the ensemble.
+- The GPU quota is almost at the end (jankombajn 2 h 20 min, nataliachoszczyk 1 h 28 min at 09:40), and the work must end at 17:00. Thus the user stops unet-v13, unet-v14 and unet-v15. The final ensemble uses the nine trained UNets.
+- `src/post.py`: each model predicts each set only one time, and an ensemble is the mean of these probabilities. `analyze` in `src/unet.py` accepts the probabilities. Thus more ensembles need little more GPU time.
+- Job `2026-11-08_37_post-v4` (jankombajn): four ensembles that are fixed before the run. The final choice uses the tune points, so that the val points stay a fair estimate.

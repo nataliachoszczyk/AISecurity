@@ -25,7 +25,7 @@ from .evaluate import BOX, eval_set, points_array, tune_ids
 from .generate import jpeg, load_set
 from .paths import generated_dir, output_dir
 from .saliency import answers_frame, causal_drops, margin, smooth
-from .unet import analyze, choose, load_ensemble, to_tensor, tune, unet_inputs
+from .unet import analyze, choose, load_ensemble, predict_masks, to_tensor, tune, unet_inputs
 
 JPEG_FILE = PROJECT_DIR / "jobs" / "runs" / "2026-11-01_14_jpeg-quality" / "output" / "jpeg_quality.csv"
 LOW_JPEG = 90
@@ -293,21 +293,28 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
     thresholds = np.linspace(*cfg["thresholds"])
 
     rows, diagnostics = [], {}
-    inputs_key, inputs, box_inputs, energy = None, None, None, None
+    box_inputs, energy = None, None
+    # The input maps depend on the config of the models. A model without the activation maps uses the first channels.
+    codenames_all = sorted({c for codenames in cfg["models"].values() for c in codenames})
+    model_cfg = cfg | {"use_act": any(load_config(c).get("use_act") for c in codenames_all)}
+    inputs = {k: unet_inputs(resnet, img, model_cfg, device) for k, img in images_of.items()}
+    # Each model predicts each set only one time. An ensemble is the mean of the probabilities (as in Ensemble).
+    model_probs = {}
+    for c in codenames_all:
+        model = load_ensemble([c], device)
+        model_probs[c] = {k: predict_masks(model, x, device).astype(np.float16) for k, x in inputs.items()}
+        del model
+        torch.cuda.empty_cache()
     for model_name, codenames in cfg["models"].items():
-        unet = load_ensemble(codenames, device)
-        # The input maps depend on the config of the models. A model without the activation maps uses the first channels.
-        model_cfg = cfg | {"use_act": any(load_config(c).get("use_act") for c in codenames)}
-        if inputs_key != model_cfg["use_act"]:
-            inputs_key = model_cfg["use_act"]
-            inputs = {k: unet_inputs(resnet, img, model_cfg, device) for k, img in images_of.items()}
+        unet = None
+        probs = {k: np.mean([model_probs[c][k].astype(np.float32) for c in codenames], 0) for k in inputs}
         # fit_offsets: tune the offset of the fitted boxes on the tune part (unet-v4 to v8 used 0.3).
         offsets = cfg.get("fit_offsets", [cfg["fit_offset"]])
         tune_of = lambda o: tune(sets["tune"][0], analyze(resnet, unet, images_of["tune"], cfg | {"fit_offset": o},
-                                                          device, inputs["tune"]), thresholds)["tune_score"]
+                                                          device, inputs["tune"], probs["tune"]), thresholds)["tune_score"]
         offset = max(offsets, key=tune_of) if len(offsets) > 1 else offsets[0]
         run_cfg = cfg | {"fit_offset": offset}
-        cand = {k: analyze(resnet, unet, images_of[k], run_cfg, device, inputs[k]) for k in images_of}
+        cand = {k: analyze(resnet, unet, images_of[k], run_cfg, device, inputs[k], probs[k]) for k in images_of}
         params = tune(sets["tune"][0], cand["tune"], thresholds) | {"fit_offset": offset}
         rule, th = params["rule"], params["threshold"]
         answers = {"base": {k: choose(c, rule, th) for k, c in cand.items()}}
@@ -411,7 +418,7 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
             rows.append(row)
             print(row, flush=True)
             answers_frame(test_ids, ans["test"]).to_csv(out_dir / f"submission_{model_name}_{variant}.csv", index=False)
-        del unet, cand
+        del probs, cand
 
     results = pd.DataFrame(rows)
     results.to_csv(out_dir / "results.csv", index=False)
