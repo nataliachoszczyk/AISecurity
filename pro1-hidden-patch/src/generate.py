@@ -21,27 +21,19 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
-from .eda import DECOY_COLOR, PATCH_COLOR, SIZE, _draw_box, load_image, load_images, load_labels, load_model, residual_view
-from .config import load_config
-from .evaluate import BOX, load_split, score_report, tune_ids
+from .eda import SIZE, load_images, load_labels, load_model
+from .evaluate import BOX, load_split, tune_ids
 from .paths import output_dir
-from .saliency import analyze, answers_frame, choose, margin
+from .saliency import margin
 
 ATTACKS = ["pgd_linf_u", "pgd_linf_t", "mifgsm_linf_u", "cw_l2_u"]
 EPS_LEVELS = np.array([2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20]) / 255
 CW_CONSTS = np.logspace(-2, 2, 12)
 CW_LINF = 20 / 255
-# fp16 makes the attack steps several times faster on a T4. The final check of the attack uses fp32.
-AMP = True
-
 
 def amp_model(model, x: torch.Tensor) -> torch.Tensor:
-    with torch.autocast("cuda", dtype=torch.float16, enabled=AMP and x.is_cuda):
+    # fp16 makes the attack steps several times faster on a T4. The final check of the attack uses fp32.
+    with torch.autocast("cuda", dtype=torch.float16, enabled=x.is_cuda):
         return model(x).float()
 
 
@@ -148,8 +140,10 @@ def attack_search(model, x, mask, c, target, kind: str, quality: np.ndarray) -> 
     return best, found, strength
 
 
-def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng, jpeg_range=(80, 95)) -> list[dict]:
+def make_jobs(labels: pd.DataFrame, copies: int, rng, jpeg_range, base_aug: bool) -> list[dict]:
     """Return one job for each new image: base, flip, patch box, new decoys, attack and JPEG quality.
+
+    With base_aug, each job also changes its base (see _prepare). Then the copies of one base are less similar.
 
     The jobs go in rounds: one copy of each base, then the next copy. Thus a stop at the time limit keeps all bases.
     """
@@ -157,7 +151,7 @@ def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng, jpeg_range=(8
     for _ in range(copies):
         for row in labels.itertuples():
             # k = 4 is the horizontal flip. A rotation changes the ResNet-18 class of most images.
-            k = int(rng.choice([0, 4])) if hflip else 0
+            k = int(rng.choice([0, 4]))
             old = [_box_of(_rect(d["box"]), k) for d in row.decoys]
             taken = np.zeros((SIZE, SIZE), bool)
             for x0, y0, x1, y1 in old:
@@ -176,7 +170,14 @@ def make_jobs(labels: pd.DataFrame, copies: int, hflip: bool, rng, jpeg_range=(8
                 eps = float(rng.choice(EPS_LEVELS))
                 decoys.append({"type": kind, "strength": eps * 255, "box": b,
                                "noise": decoy_noise(rng, kind, eps, b[3] - b[1], b[2] - b[0])})
-            jobs.append({"base": row.id, "k": k, "box": box, "old_decoys": old, "decoys": decoys,
+            aug = None
+            if base_aug:
+                # A crop moves the old decoys, so only bases without decoys get a crop.
+                size = SIZE if old else int(rng.integers(48, SIZE + 1))
+                aug = {"crop": (size, int(rng.integers(0, SIZE - size + 1)), int(rng.integers(0, SIZE - size + 1))),
+                       "gain": float(rng.uniform(0.85, 1.15)), "bias": float(rng.uniform(-0.05, 0.05)),
+                       "color": rng.uniform(0.92, 1.08, 3)}
+            jobs.append({"base": row.id, "k": k, "box": box, "old_decoys": old, "decoys": decoys, "aug": aug,
                          "attack": str(rng.choice(ATTACKS)), "jpeg": int(rng.integers(jpeg_range[0], jpeg_range[1] + 1)),
                          "target_rank": int(rng.integers(1, 6))})
     return jobs
@@ -195,26 +196,24 @@ def _box_of(mask: np.ndarray, k: int) -> tuple[int, int, int, int]:
     return int(cols[0]), int(rows[0]), int(cols[-1] + 1), int(rows[-1] + 1)
 
 
-def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
-             deadline: float | None = None, exclude: set = frozenset(),
-             max_bases: int | None = None, shard: tuple[int, int] = (0, 1),
-             device: str | None = None, jpeg_range=(80, 95)) -> tuple[pd.DataFrame, np.ndarray]:
+def generate(part: str, cfg: dict, deadline: float | None, shard: tuple[int, int], device: str) -> tuple[pd.DataFrame, np.ndarray]:
     """Return the labels and the uint8 images (N, SIZE, SIZE, 3) of the new attacked images.
 
-    part selects the bases from splits/split.csv: train or val. exclude has ids that are not bases.
-    max_bases uses only the first bases, for a smoke test.
+    part selects the bases from splits/split.csv: train or val. The tune part of the UNet gives no bases.
     After the deadline (time.time()), no new batch starts.
     shard = (i, n) makes only every n-th job, from job i. One process on each GPU makes one shard.
     """
-    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model = load_model().to(device).requires_grad_(False)
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(cfg["seed"] + (part == "val"))
     labels = load_labels().merge(load_split(), on="id")
+    exclude = tune_ids(cfg["tune_fraction"], cfg["tune_seed"])
     bases = labels[(labels.part == part) & labels.kind.isin(["CLEAN", "DECOY"]) & ~labels.id.isin(exclude)]
-    bases = bases.reset_index(drop=True)[:max_bases]
+    # max_bases uses only the first bases, for a smoke test.
+    bases = bases.reset_index(drop=True)[:cfg.get("max_bases")]
     print(f"{part}: {len(bases)} bases", flush=True)
     base_images = dict(zip(bases.id, load_images("train", bases.id)))
-    jobs = make_jobs(bases, copies, hflip, rng, jpeg_range)[shard[0]::shard[1]]
+    jobs = make_jobs(bases, cfg[f"{part}_copies"], rng, cfg["jpeg"], cfg.get("base_aug", False))[shard[0]::shard[1]]
+    batch = cfg["batch"]
     with torch.no_grad():
         upright = torch.from_numpy(np.stack(list(base_images.values()))).permute(0, 3, 1, 2).to(device)
         base_class = dict(zip(base_images, model(upright).argmax(1).tolist()))
@@ -269,10 +268,20 @@ def generate(part: str, copies: int, hflip: bool, seed: int, batch: int = 512,
 
 
 def _prepare(image: np.ndarray, job: dict) -> np.ndarray:
-    """Return the base image after the flip, with the new decoys."""
+    """Return the base image after the flip and the change of base_aug, with the new decoys.
+
+    The class check in generate() rejects a change that changes the ResNet-18 class.
+    """
     x = np.rot90(image, job["k"] % 4)
     x = x[:, ::-1] if job["k"] >= 4 else x
     x = x.copy()
+    if job.get("aug"):
+        a = job["aug"]
+        size, y0, x0 = a["crop"]
+        if size < SIZE:
+            crop = (x[y0:y0 + size, x0:x0 + size] * 255).round().astype(np.uint8)
+            x = np.asarray(Image.fromarray(crop).resize((SIZE, SIZE), Image.BICUBIC), dtype=np.float32) / 255
+        x = np.clip((x * a["gain"] + a["bias"]) * a["color"], 0, 1)
     for d in job["decoys"]:
         x0, y0, x1, y1 = d["box"]
         x[y0:y1, x0:x1] += d["noise"]
@@ -294,8 +303,7 @@ def load_set(path) -> tuple[pd.DataFrame, np.ndarray]:
 
 
 def run_generation(cfg: dict) -> None:
-    """Generate the train and val sets and score saliency-v1 on the val set."""
-
+    """Generate the train and val sets. Write one zip file for a Kaggle dataset."""
     out_dir = output_dir() / cfg["codename"]
     out_dir.mkdir(parents=True, exist_ok=True)
     # Stop the train part in time, so the zip is complete before the Kaggle limit of 12 hours.
@@ -319,15 +327,12 @@ def run_generation(cfg: dict) -> None:
         summary.to_csv(out_dir / f"summary_{part}.csv")
         print(summary, flush=True)
         if part == "val":
-            # The checks run before the long train part, so an error shows early.
-            plot_examples(labels, images.astype(np.float32) / 255).savefig(out_dir / "examples.png", dpi=80, bbox_inches="tight")
-            score_saliency(labels, images.astype(np.float32) / 255, cfg).to_csv(out_dir / "report_saliency-v1_gen_val.csv", index=False)
+            # The check runs before the long train part, so an error shows early.
+            # A smoke test has few images and a noisy strength distribution, so its config can make the gap larger.
             check_strength(labels, cfg.get("max_strength_gap", 4.0))
-            # gen-v4 version 1: the cache of the saliency check kept 12 GB on GPU 0, so the train shard 0 failed.
-            torch.cuda.empty_cache()
 
-    # One zip file for the Kaggle dataset: Output -> New Dataset on the notebook page. Kaggle extracts a zip to a folder
-    # with the name of the zip. The name "<codename>.zip" failed (gen-v4), because the folder <codename>/ is also an output.
+    # Kaggle extracts a zip to a folder with the name of the zip. The folder <codename>/ is also an output,
+    # so the zip must have a different name.
     with zipfile.ZipFile(output_dir() / f"{cfg['codename']}-set.zip", "w", zipfile.ZIP_DEFLATED) as z:
         for part in ["train", "val"]:
             for ext in ["npy", "csv"]:
@@ -337,9 +342,7 @@ def run_generation(cfg: dict) -> None:
 
 def _generate_shard(part: str, cfg: dict, deadline: float | None, shard: tuple[int, int], out_dir) -> None:
     device = f"cuda:{shard[0]}" if torch.cuda.is_available() else "cpu"
-    labels, images = generate(part, cfg[f"{part}_copies"], cfg["hflip"], cfg["seed"] + (part == "val"), cfg["batch"],
-                              deadline, tune_ids(cfg["tune_fraction"], cfg["tune_seed"]), cfg.get("max_bases"), shard, device,
-                              cfg.get("jpeg", (80, 95)))
+    labels, images = generate(part, cfg, deadline, shard, device)
     save_set(out_dir / f"{part}_{shard[0]}", labels, images)
 
 
@@ -353,41 +356,3 @@ def check_strength(labels: pd.DataFrame, max_gap: float) -> None:
     if (gap > max_gap).any() or table.generated.isna().any():
         raise RuntimeError(f"the strength of the generated attacks is not like the task data:\n{table}")
 
-
-def score_saliency(labels: pd.DataFrame, images: np.ndarray, cfg: dict) -> pd.DataFrame:
-    """Score saliency-v1 with the parameters of its Kaggle run: the first valid check of patches in the top half."""
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = load_model().to(device).requires_grad_(False)
-    cand = analyze(model, images, load_config("saliency-v1"), device)
-    answers = answers_frame(labels.id, choose(cand, cfg["saliency_tie"], cfg["saliency_threshold"]))
-    half = np.where((labels.y_min + labels.y_max) / 2 < SIZE / 2, "top half", "bottom half")
-    band = np.where(labels.jpeg < 90, "JPEG 80-89", "JPEG 90-95")
-    report = pd.concat([score_report(labels, answers), score_report(labels.assign(attack=half), answers).iloc[1:],
-                        score_report(labels.assign(attack=band), answers).iloc[1:]])
-    print(report, flush=True)
-    return report
-
-
-def plot_examples(labels: pd.DataFrame, images: np.ndarray, bases: int = 4, per_base: int = 3):
-    """For some bases: the original image, then generated images and their residuals with the true boxes."""
-    fig, axes = plt.subplots(bases, 1 + 2 * per_base, figsize=(2.2 * (1 + 2 * per_base), 2.4 * bases))
-    for ax in axes.flat:
-        ax.axis("off")
-    for row_axes, base in zip(axes, labels.base.drop_duplicates()[:bases]):
-        row_axes[0].imshow(load_image("train", base))
-        row_axes[0].set_title(f"original\n{base}", fontsize=7)
-        sel = np.where(labels.base == base)[0][:per_base]
-        for j, i in enumerate(sel):
-            row = labels.iloc[i]
-            ax_img, ax_res = row_axes[1 + 2 * j], row_axes[2 + 2 * j]
-            ax_img.imshow(images[i])
-            ax_img.set_title(f"{row.attack}\nstrength {row.strength:.3g}, JPEG {row.jpeg}", fontsize=7)
-            ax_res.imshow(residual_view(images[i]), cmap="gray")
-            _draw_box(ax_res, (row.x_min, row.y_min, row.x_max, row.y_max), PATCH_COLOR, "patch")
-            for d in row.decoys:
-                _draw_box(ax_res, d["box"], DECOY_COLOR, "decoy")
-            ax_res.set_title("residual", fontsize=7)
-        for ax in row_axes:
-            ax.axis("off")
-    fig.tight_layout()
-    return fig

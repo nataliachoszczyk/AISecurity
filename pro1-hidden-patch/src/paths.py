@@ -25,20 +25,30 @@ def output_dir() -> Path:
     return PROJECT_DIR / "submissions"
 
 
-def generated_dir() -> Path:
-    """Return the folder with the generated set (train.npy, val.npy and their CSV files).
+def generated_dir(name: str = "gen-v4") -> Path:
+    """Return the folder with the generated set name (train.npy, val.npy and their CSV files).
 
-    The Kaggle dataset can contain the files or the zip of the generator. A zip is extracted to /kaggle/temp.
+    The notebook output of the generator has the zip <name>.zip (gen-v4) or <name>-set.zip (later sets).
+    A zip is extracted to /kaggle/temp/<name>.
     """
-    found = sorted(KAGGLE_INPUT.rglob("val.npy")) if KAGGLE_INPUT.exists() else []
+    found = [p.parent for p in KAGGLE_INPUT.rglob("val.npy") if name in p.parts] if KAGGLE_INPUT.exists() else []
     if found:
-        return found[0].parent
-    zips = sorted(KAGGLE_INPUT.rglob("gen-*.zip")) if KAGGLE_INPUT.exists() else []
+        return sorted(found)[0]
+    zips = sorted(p for p in KAGGLE_INPUT.rglob("*.zip") if p.name in (f"{name}.zip", f"{name}-set.zip"))         if KAGGLE_INPUT.exists() else []
     if not zips:
-        raise FileNotFoundError("no generated set in /kaggle/input")
-    target = Path("/kaggle/temp/generated")
-    if not (target / "val.npy").exists():
+        raise FileNotFoundError(f"no generated set {name} in /kaggle/input")
+    target = Path("/kaggle/temp") / name
+    if not target.exists():
+        import tempfile
         import zipfile
-        with zipfile.ZipFile(zips[-1]) as z:
-            z.extractall(target)
+        # Two processes (one on each GPU) can extract at the same time. The rename makes the complete folder appear at once.
+        Path("/kaggle/temp").mkdir(exist_ok=True)
+        tmp = Path(tempfile.mkdtemp(dir="/kaggle/temp"))
+        with zipfile.ZipFile(zips[0]) as z:
+            z.extractall(tmp)
+        try:
+            tmp.rename(target)
+        except OSError:
+            import shutil
+            shutil.rmtree(tmp)
     return target

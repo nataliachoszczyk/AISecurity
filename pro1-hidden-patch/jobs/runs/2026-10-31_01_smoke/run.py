@@ -30,7 +30,7 @@ device = "cuda" if info["gpus"] else "cpu"
 labels = load_labels()
 info["n_train"], info["n_test"] = len(labels), len(load_test_ids())
 info["n_val"] = len(eval_set("val")[0])
-info["config_smooth"] = load_config("saliency-v1")["smooth"]
+info["config_ig_steps"] = load_config("post-v4")["ig_steps"]
 
 model = load_model().to(device)
 if len(info["gpus"]) > 1:

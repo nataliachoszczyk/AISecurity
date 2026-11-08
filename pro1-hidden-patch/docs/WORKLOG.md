@@ -215,3 +215,103 @@
   - Separate thresholds for test images with a JPEG quality below 90, tuned on the generated val set. On the generated val set, unet-v8b gets 0.528 for quality 80-89 and 0.584 for 90-95.
   - The mean mask of unet-v8a and unet-v8b (two seeds).
   - 300 epochs. Both unet-v8 runs selected the last epoch.
+
+## 2026-11-07
+
+- New branch `pro1-experiments` from `pro1` for more experiments. The aim is a val score above 0.69 (unet-v8b: 0.676).
+- Note: val has 500 images, so the standard error of the val score is approximately 0.018. The checkpoints of unet-v8b from epoch 164 to 199 give val 0.661-0.676. Thus the reports now also give the paired difference to the base on the same val images, with its standard error.
+- The project uses the Kaggle account `jankombajn` with a project token (`.kaggle/access_token`, not in git). New script `jobs/kaggle.sh` (from `KAGGLE.md`) selects the token. `jobs/wait.sh` now calls it.
+- New module `src/post.py`: diagnostics and post-processing on the masks of trained UNets, without new training.
+  - Diagnostics: the lost points of each error kind (no answer, a decoy, a miss, a low IoU, a box on an image without a patch), the IoU of the hits, and two upper bounds (a perfect 0,0,0,0 decision, a perfect choice of a candidate).
+  - soft: a search of boxes near the answer (each side ±3 pixels) for the largest expected IoU with the patch mask.
+  - causal: each side of the box moves inwards while the ResNet-18 margin drop stays.
+  - selector: gradient boosting predicts the IoU of each candidate. It learns on the tune part and the generated val set, with 5 folds grouped by the base image.
+  - jpeg: a separate threshold for test images with a JPEG quality below 90. It is tuned on the generated val images with JPEG 80-89 and on the tune images without a patch, saved again as JPEG 80-88.
+- `unet.analyze()` can get the UNet input that is already calculated, so the integrated gradients map is calculated only once for all models.
+- Jobs `2026-11-07_20_post-smoke` (Kaggle CPU) and `2026-11-07_21_post-v1` (Kaggle GPU) on unet-v8a, unet-v8b and their mean.
+- The bases of the generated images are only the clean and decoy-only images of the train part without tune (approximately 800). Each base has approximately 40 copies. This can explain the overfit of unet-v8b (train loss 0.35, tune loss 0.81).
+- New option `use_act` in `src/unet.py` (from Metzen et al. 2017 and SentiNet). The UNet gets 6 more maps from ResNet-18: for layer1, layer2 and layer3, the size of the activation change caused by the noise (image against median 3x3), and its first-order effect on the margin. A decoy also changes the activations, but it does not move the decision.
+- Job `2026-11-07_22_unet-v9`: unet-v9a (unet-v8b with `use_act`) and unet-v9b (unet-v8b with width 96 and 160 epochs). Width 32 to 64 gave +0.02 and 100 to 200 epochs gave +0.011, so a larger UNet can help. GPU smoke test first: `2026-11-07_23_unet-v9-smoke`.
+- New option `base_aug` in `src/generate.py`. Each generated image changes its base before the attack: a random crop (48-64 pixels, resized to 64) of the clean bases, and a random brightness, contrast and color. The class check rejects a change that changes the ResNet-18 class. The aim: less similar copies of the approximately 800 bases.
+- Job `2026-11-07_24_gen-v5`: gen-v5 (gen-v4 with seed 5 and `base_aug`). Its smoke test runs first in the same session.
+- unet-v9 smoke test passed. The input maps (integrated gradients and activation maps) of 35k images take approximately 19 minutes. One epoch with width 96 takes approximately 110-140 seconds.
+- New option `attn` in `src/unet.py`: transformer layers over the 64 places of the deepest UNet level (as in TransUNet). The choice between the patch and a decoy compares two noise rectangles of one image.
+- New option `generated_sets` in `src/unet.py`: the UNet learns on the train parts of several generated sets (for example gen-v4 and gen-v5). `generated_dir(name)` finds the zip of each set. The generated val set stays the one of gen-v4.
+- `src/post.py` now calculates the input maps with the config of each model, so it also works with `use_act`.
+- post-v1 results (job `2026-11-07_21_post-v1`). Val points lost by unet-v8b (total 0.324):
+
+  | Error kind | Lost points |
+  |---|---|
+  | Hit with a low IoU (mean IoU 0.71, only 27% of the hits have IoU 0.9 or more) | 0.203 |
+  | Miss (the box is not on the patch and not on a decoy) | 0.042 |
+  | 0,0,0,0 on an image with a patch | 0.038 |
+  | Box on a decoy | 0.026 |
+  | Box on an image without a patch | 0.014 |
+
+  - Upper bounds on val: a perfect 0,0,0,0 decision gives 0.698, a perfect choice among the candidates gives 0.731.
+  - Variants (val, paired difference to the base): soft +0.002 (standard error 0.001), causal -0.063, selector -0.011, jpeg +0.002. The mean of unet-v8a and unet-v8b: val 0.677.
+  - Decision: a better choice or decision cannot reach 0.70. The edges of the boxes are the main problem.
+- New module `src/boxnet.py`: a second stage that refines the edges of a candidate box. BoxNet gets the input maps and the candidate box. It averages its features along each edge of the candidate, because the evidence of a whole edge adds up. Then it classifies the position of each edge in a window of ±8 pixels. A second head predicts the IoU of the candidate.
+- `jobs/kaggle.sh`: with `KAGGLE_PERSONAL=1`, the CLI uses the personal account (nataliachoszczyk) and not the project token.
+- Jobs `2026-11-07_25_boxnet-real` (nataliachoszczyk, real images only, also the smoke test of BoxNet) and `2026-11-07_26_boxnet-v1` (jankombajn, real and gen-v4 images, refines the unet-v8 answers).
+- boxnet-real results (real train images only, 150 epochs, 24 minutes with the smoke test). The check uses patch boxes with random edge changes of up to 3 pixels. Mean IoU on val: 0.738 before BoxNet, 0.762 after. On tune: 0.738 before, 0.775 after. BoxNet works, but the gain is small with only the real images. boxnet-v1 also uses the gen-v4 images.
+- gen-v6 version 1 failed: with 2 val copies, only 17 C&W images were in the strength check, and their median (5.3/255) was too far from the task data (9.6/255). Version 2 uses 8 val copies.
+- The notebooks gen-v4, unet-v8 and gen-v5 of jankombajn are now shared with nataliachoszczyk, and gen-v6 of nataliachoszczyk with jankombajn. Thus both accounts can run all jobs (2 GPU sessions each).
+- `src/post.py` for the final pipeline (post-v2):
+  - `fit_offsets`: the offset of the fitted boxes is tuned on the tune part. unet-v4 to unet-v8 used 0.3.
+  - `boxnet`: the variants `boxnet` and `soft_boxnet` refine the base and the soft answers with a trained BoxNet (`load_boxnet` in `src/boxnet.py`).
+  - `variants`: the list of the other variants (causal, selector, jpeg). post-v1 showed that they do not help, so post-v2 can skip them.
+- The fitted boxes already search all boxes of an allowed size (approximately 700 sizes and 1 million boxes on each image). Thus the limit is the score of the boxes, not the search.
+- New variant `scan` in `src/post.py`: the scan statistic of the noise variance. For each box near the answer (each side ±radius pixels), the log-likelihood ratio compares the variance of the noise residual inside the box and in a ring around it. A weight lam adds the UNet evidence, because a decoy also has a high noise variance. lam and the ring size are tuned on the tune part.
+- gen-v5 (jankombajn) and gen-v6 (nataliachoszczyk, version 2) are complete. All jobs ended in approximately 2 hours. gen-v5: train 31027 images, val 93. gen-v6: train 30703 images, val 448.
+- boxnet-v1 results. Jitter IoU on val: 0.738 before, 0.759 (v1a) and 0.775 (v1b) after. On the unet-v8 answers boxnet-v1b loses points: val 0.677 (base), 0.659 (edge1, delta -0.018, standard error 0.004). The UNet errors are not random edge changes. BoxNet is not used.
+- post-v2 results (mean of unet-v8a and unet-v8b, account nataliachoszczyk). Val: base 0.676 (tuned fit offset 0.25), soft 0.678 (delta +0.003, standard error 0.001), scan 0.669 (delta -0.007, standard error 0.002). The post-processing cannot reach 0.70. The next gains must come from the UNet.
+- New training jobs against the overfit (train loss 0.35, tune loss 0.81 in unet-v8b):
+  - `2026-11-07_29_unet-v10` (jankombajn): unet-v10a is unet-v8b on the real images, gen-v4 and gen-v5 (65513 images). unet-v10b adds 2 transformer layers at the 8x8 level. One epoch takes approximately 2.5 minutes.
+  - `2026-11-07_30_unet-v11` (nataliachoszczyk): unet-v8b on the real images and all three generated sets (approximately 97000 images), 120 epochs. 200 epochs can go over the 12-hour limit.
+  - `2026-11-07_31_unet-v11b` (nataliachoszczyk): unet-v11 with the transformer layers and train_seed 2. It is also a second model for an ensemble.
+- The local monitors: one loop checks all running jobs every 5 minutes and stops when a job ends.
+
+## 2026-11-08
+
+- unet-v9 results. unet-v9a (unet-v8b plus the 6 activation maps): val 0.684, tune 0.692. unet-v9b (width 96, 160 epochs): val 0.669, tune 0.670. The activation maps help (+0.008 to unet-v8b). The larger UNet does not help. The tune points of unet-v9a increased until the last epochs.
+- New option `half_inputs` in `src/unet.py`: the train inputs and masks are float16. Each batch changes to float32 before the UNet. With the activation maps, 97000 images need 7.8 GB on the GPU as float16 (15.5 GB as float32).
+- Job `2026-11-08_32_unet-v12` (jankombajn): unet-v9a on the real images and the three generated sets, 100 epochs.
+- unet-v11 result (unet-v8b on the three generated sets, 120 epochs): val 0.681, tune 0.687. More generated images help a little (unet-v8b: val 0.676).
+- `Ensemble` in `src/unet.py` accepts models with different inputs. Each model gets the first channels that it knows (RGB, IG, then the activation maps). `src/post.py` calculates the activation maps if one model of the ensemble needs them.
+- A notebook of one account cannot read the new outputs of the other account (unet-v9 and unet-v11 give 403). The user must share them before an ensemble of both accounts can run. The job `2026-11-08_33_post-v3` (ensembles of unet-v8, unet-v9a and unet-v11) waits for this.
+- Job `2026-11-08_34_unet-v13` (nataliachoszczyk): unet-v12 with train_seed 2, for an ensemble.
+- unet-v10 results: unet-v10a (unet-v8b on gen-v4 and gen-v5) val 0.681, tune 0.694. unet-v10b (with 2 transformer layers) val 0.683, tune 0.687. All single models are at val 0.68 ± 0.003.
+- post-v3 now runs on jankombajn with the jankombajn models only (unet-v8, unet-v9, unet-v10), because no share is necessary.
+- unet-v11b result (unet-v11 with 2 transformer layers, train_seed 2): val 0.680, tune 0.696.
+- Job `2026-11-08_35_unet-v14` (nataliachoszczyk): unet-v12 with 2 transformer layers and train_seed 3, for an ensemble.
+- post-v3 results (val, soft variant): unet-v9a 0.686, unet-v9a + unet-v10b 0.690, four models (unet-v9a, unet-v10a, unet-v10b, unet-v8b) 0.690, all six jankombajn models 0.697 (base 0.693). The ensemble of different models gives the largest gain.
+- Job `2026-11-08_36_unet-v15` (jankombajn): unet-v12 with train_seed 4, for the ensemble.
+- The GPU quota is almost at the end (jankombajn 2 h 20 min, nataliachoszczyk 1 h 28 min at 09:40), and the work must end at 17:00. Thus the user stops unet-v13, unet-v14 and unet-v15. The final ensemble uses the nine trained UNets.
+- `src/post.py`: each model predicts each set only one time, and an ensemble is the mean of these probabilities. `analyze` in `src/unet.py` accepts the probabilities. Thus more ensembles need little more GPU time.
+- Job `2026-11-08_37_post-v4` (jankombajn): four ensembles that are fixed before the run. The final choice uses the tune points, so that the val points stay a fair estimate.
+- unet-v12 result (unet-v9a on the three generated sets, 100 epochs): val 0.691, tune 0.698. It is the best single model.
+- The post-v4 smoke test (account nataliachoszczyk) passed. post-v4 runs on jankombajn since 10:15.
+- Next step: read `results.csv` of post-v4. Select the ensemble with the most tune points. Submit only if its val points are more than 0.70.
+- post-v4 results (soft variant; tune / val / gen_val):
+
+  | Ensemble | Tune | Val | Generated val |
+  |---|---|---|---|
+  | six (unet-v8a, v8b, v9a, v9b, v10a, v10b) | 0.692 | 0.697 | 0.583 |
+  | all9 (all nine UNets) | 0.698 | 0.687 | 0.585 |
+  | new7 (all nine without unet-v8a and unet-v8b) | 0.701 | 0.696 | 0.588 |
+  | act2 (unet-v9a and unet-v12) | 0.700 | 0.707 | 0.601 |
+
+  - new7 and act2 have almost the same tune points (difference 0.001, much less than the standard error). act2 is better on val (+0.011) and on the generated val set (+0.013), which no step used for a choice. Thus act2 soft is the candidate for the submission. It is the first result above 0.70 on val.
+- End of the experiments (2026-11-08, 11:30). Decision: submit two files, act2 soft (val 0.707) and new7 soft (val 0.696, the best tune points). The files are in the output of `jankombajn/bumas-p1-post-v4` (`post-v4/submission_act2_soft.csv` and `post-v4/submission_new7_soft.csv`). The leaderboard score selects the final file. If the two scores are almost equal, select new7, because the mean of seven models is more stable.
+- Open tasks at the end of the project: merge `pro1-experiments` into `pro1` and `main`, and update the README files.
+- act2 soft got 0.6849 on the leaderboard (place 3). The file new7 soft was not sent.
+- Branch `pro1-experiments-final`: the repository keeps only the code and the jobs of act2. The full history of the experiments stays on `pro1-experiments`.
+  - Kept jobs: smoke (a test of the platform), gen-v4, gen-v5, gen-v6, unet-v9, unet-v12 and post-v4. All other job folders and their rows in `jobs/JOBS.md` are deleted.
+  - In the kept job folders, no file is changed. The outputs that act2 does not need are deleted: the saliency-v1 reports, the unet-v9b outputs and `post-v4/output/post-v4/diagnostics.json`.
+  - The configs `gen-v5-smoke`, `gen-v6-smoke` and `unet-v9b` stay, because the `run.py` of their jobs use them.
+  - The smoke job reads the config post-v4, because the config saliency-v1 is deleted.
+  - `src/`: the options that act2 does not use are deleted. The code reads the configs of act2 without a change. `src/post.py` makes only the act2 ensemble of post-v4.
+  - `src/boxnet.py` is deleted.
+- Job `2026-11-08_39_cleanup-check` (jankombajn, GPU): the cleaned code gives the same results as the old code on a small sample (`output/compare.json`). `src/post.py` was not in the check, because it needs the trained models. After the check, the job folder and its row in `jobs/JOBS.md` are deleted.
+- `docs/RESULTS.md`: new row for act2 (leaderboard 0.6849).

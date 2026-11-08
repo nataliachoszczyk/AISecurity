@@ -2,11 +2,9 @@
 # Follow a Kaggle kernel until it stops. Write each status change into JOBS.md.
 # Usage: bash wait.sh <owner/kernel-slug> "<job name in the JOBS.md row>"
 DIR="$(dirname "$0")"
-KAGGLE="$DIR/../../.venv/Scripts/kaggle"
-[ -x "$KAGGLE" ] || [ -x "$KAGGLE.exe" ] || KAGGLE="$DIR/../../.venv/bin/kaggle"  # Linux and macOS
 last=""
 while true; do
-  raw=$("$KAGGLE" kernels status "$1" 2>&1)
+  raw=$(bash "$DIR/kaggle.sh" kernels status "$1" 2>&1)
   case "$raw" in
     *QUEUED*) status="queued" ;;
     *RUNNING*) status="running" ;;
