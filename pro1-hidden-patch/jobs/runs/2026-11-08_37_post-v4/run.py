@@ -15,7 +15,5 @@ sys.path.insert(0, f"{CLONE}/{PROJECT}")
 from src.config import load_config
 from src.post import run_experiment
 
-# The smoke test on 40 images of each set finds errors in the new variants in minutes.
-cfg = load_config(CODENAME)
-run_experiment(cfg | {"smoke": 40, "codename": f"{CODENAME}-smoke"})
-run_experiment(cfg)
+# The smoke test runs in the job 2026-11-08_38_post-v4-smoke on the other account.
+run_experiment(load_config(CODENAME))
