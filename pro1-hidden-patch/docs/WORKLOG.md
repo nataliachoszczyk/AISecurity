@@ -313,4 +313,5 @@
   - The smoke job reads the config post-v4, because the config saliency-v1 is deleted.
   - `src/`: the options that act2 does not use are deleted. The code reads the configs of act2 without a change. `src/post.py` makes only the act2 ensemble of post-v4.
   - `src/boxnet.py` is deleted.
-- Job `2026-11-08_39_cleanup-check` (jankombajn, GPU): the cleaned code gives the same results as the old code on a small sample (`output/compare.json`). `src/post.py` was not in the check, because it needs the trained models. TODO: delete this job folder and its row in `jobs/JOBS.md` before the merge.
+- Job `2026-11-08_39_cleanup-check` (jankombajn, GPU): the cleaned code gives the same results as the old code on a small sample (`output/compare.json`). `src/post.py` was not in the check, because it needs the trained models. After the check, the job folder and its row in `jobs/JOBS.md` are deleted.
+- `docs/RESULTS.md`: new row for act2 (leaderboard 0.6849).
