@@ -1,10 +1,10 @@
-# unet-v12 with train_seed 4: one more model with the activation maps for an ensemble.
+# unet-v12 with train_seed 4: one more model with the activation maps for an ensemble. 55 epochs: the work must end at 17:00 on 2026-11-08.
 seed: 0
 tune_fraction: 0.1
 width: 64
 use_ig: true
 ig_steps: 8
-epochs: 100
+epochs: 55
 batch: 64
 lr: 0.05
 weight_decay: 0.0005
