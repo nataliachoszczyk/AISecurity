@@ -1,9 +1,9 @@
-"""Train one UNet variant on one GPU. Two variants with three generated sets need too much host memory."""
+"""Train one UNet on one GPU. Then select the checkpoint on the tune part and score val and gen_val."""
 import subprocess
 import sys
 
 REPO = "https://github.com/nataliachoszczyk/AISecurity.git"
-BRANCH = "pro1-experiments"
+BRANCH = "pro1"
 PROJECT = "pro1-hidden-patch"
 CLONE = "/tmp/repo"  # Not in the output folder, so the clone is not an output.
 CODENAME = "unet-v12"

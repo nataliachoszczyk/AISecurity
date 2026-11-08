@@ -305,3 +305,9 @@
   - new7 and act2 have almost the same tune points (difference 0.001, much less than the standard error). act2 is better on val (+0.011) and on the generated val set (+0.013), which no step used for a choice. Thus act2 soft is the candidate for the submission. It is the first result above 0.70 on val.
 - End of the experiments (2026-11-08, 11:30). Decision: submit two files, act2 soft (val 0.707) and new7 soft (val 0.696, the best tune points). The files are in the output of `jankombajn/bumas-p1-post-v4` (`post-v4/submission_act2_soft.csv` and `post-v4/submission_new7_soft.csv`). The leaderboard score selects the final file. If the two scores are almost equal, select new7, because the mean of seven models is more stable.
 - Open tasks at the end of the project: merge `pro1-experiments` into `pro1` and `main`, and update the README files.
+- act2 soft got 0.6849 on the leaderboard (place 3). The file new7 soft was not sent.
+- Branch `pro1-experiments-final`: the repository keeps only the code and the jobs of act2. The full history of the experiments stays on `pro1-experiments`.
+  - Kept jobs: gen-v4, gen-v5, gen-v6, unet-v9 (only unet-v9a), unet-v12 and post-v4 (only act2). All other job folders are deleted.
+  - `src/`: the options that act2 does not use are deleted. The configs of act2 give the same calculation as before.
+  - `src/boxnet.py` is deleted. `src/post.py` keeps only the ensemble mean and the soft refinement.
+  - The `run.py` files clone the branch `pro1`, because this branch gets the final code.

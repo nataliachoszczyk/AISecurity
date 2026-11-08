@@ -1,7 +1,0 @@
-{
-  "codename": "boxnet-real",
-  "jitter_iou_before_tune": 0.7377186936227874,
-  "jitter_iou_after_tune": 0.7745664940241789,
-  "jitter_iou_before_val": 0.7376967487482429,
-  "jitter_iou_after_val": 0.7620305664084812
-}

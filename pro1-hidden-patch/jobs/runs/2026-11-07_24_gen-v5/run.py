@@ -1,13 +1,12 @@
-"""Generate attacked images with patches at any position. Score saliency-v1 on the generated val set."""
+"""Generate attacked images with patches at any position."""
 import subprocess
 import sys
 
 REPO = "https://github.com/nataliachoszczyk/AISecurity.git"
-BRANCH = "pro1-experiments"
+BRANCH = "pro1"
 PROJECT = "pro1-hidden-patch"
 CLONE = "/tmp/repo"  # Not in the output folder, so the clone is not an output.
-# The smoke test runs first in the same session, so an error stops the job after a few minutes.
-CODENAMES = ["gen-v5-smoke", "gen-v5"]
+CODENAME = "gen-v5"
 
 # The generator starts one process for each GPU. A new process imports this file again,
 # so the clone and the run must be only in the main process.
@@ -26,9 +25,4 @@ if __name__ == "__main__":
     from src.config import load_config
     from src.generate import run_generation
 
-    for codename in CODENAMES:
-        run_generation(load_config(codename))
-        if codename.endswith("-smoke"):
-            # Later jobs find the generated set by the zip name, so the smoke zip must not stay in the output.
-            for path in __import__("pathlib").Path("/kaggle/working").glob(f"{codename}*.zip"):
-                path.unlink()
+    run_generation(load_config(CODENAME))
