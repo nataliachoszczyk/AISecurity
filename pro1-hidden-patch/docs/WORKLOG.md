@@ -271,3 +271,9 @@
   - `2026-11-07_30_unet-v11` (nataliachoszczyk): unet-v8b on the real images and all three generated sets (approximately 97000 images), 120 epochs. 200 epochs can go over the 12-hour limit.
   - `2026-11-07_31_unet-v11b` (nataliachoszczyk): unet-v11 with the transformer layers and train_seed 2. It is also a second model for an ensemble.
 - The local monitors: one loop checks all running jobs every 5 minutes and stops when a job ends.
+
+## 2026-11-08
+
+- unet-v9 results. unet-v9a (unet-v8b plus the 6 activation maps): val 0.684, tune 0.692. unet-v9b (width 96, 160 epochs): val 0.669, tune 0.670. The activation maps help (+0.008 to unet-v8b). The larger UNet does not help. The tune points of unet-v9a increased until the last epochs.
+- New option `half_inputs` in `src/unet.py`: the train inputs and masks are float16. Each batch changes to float32 before the UNet. With the activation maps, 97000 images need 7.8 GB on the GPU as float16 (15.5 GB as float32).
+- Job `2026-11-08_32_unet-v12` (jankombajn): unet-v9a on the real images and the three generated sets, 100 epochs.
