@@ -1,5 +1,5 @@
 {
-  "id": "nataliachoszczyk/bumas-p1-post-v3",
+  "id": "jankombajn/bumas-p1-post-v3",
   "title": "bumas-p1-post-v3",
   "code_file": "run.py",
   "language": "python",
@@ -10,5 +10,5 @@
   "machine_shape": "NvidiaTeslaT4",
   "dataset_sources": ["jankombajn/bumas-p1-hidden-patch"],
   "competition_sources": [],
-  "kernel_sources": ["jankombajn/bumas-p1-gen-v4", "jankombajn/bumas-p1-unet-v8", "jankombajn/bumas-p1-unet-v9", "nataliachoszczyk/bumas-p1-unet-v11"]
+  "kernel_sources": ["jankombajn/bumas-p1-gen-v4", "jankombajn/bumas-p1-unet-v8", "jankombajn/bumas-p1-unet-v9", "jankombajn/bumas-p1-unet-v10"]
 }

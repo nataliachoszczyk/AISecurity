@@ -1,4 +1,4 @@
-"""Run the diagnostics and the post-processing variants on ensembles of the unet-v8, unet-v9 and unet-v11 models. One GPU is enough."""
+"""Run the diagnostics and the post-processing variants on ensembles of the unet-v8, unet-v9 and unet-v10 models. One GPU is enough."""
 import subprocess
 import sys
 

@@ -281,3 +281,5 @@
 - `Ensemble` in `src/unet.py` accepts models with different inputs. Each model gets the first channels that it knows (RGB, IG, then the activation maps). `src/post.py` calculates the activation maps if one model of the ensemble needs them.
 - A notebook of one account cannot read the new outputs of the other account (unet-v9 and unet-v11 give 403). The user must share them before an ensemble of both accounts can run. The job `2026-11-08_33_post-v3` (ensembles of unet-v8, unet-v9a and unet-v11) waits for this.
 - Job `2026-11-08_34_unet-v13` (nataliachoszczyk): unet-v12 with train_seed 2, for an ensemble.
+- unet-v10 results: unet-v10a (unet-v8b on gen-v4 and gen-v5) val 0.681, tune 0.694. unet-v10b (with 2 transformer layers) val 0.683, tune 0.687. All single models are at val 0.68 ± 0.003.
+- post-v3 now runs on jankombajn with the jankombajn models only (unet-v8, unet-v9, unet-v10), because no share is necessary.

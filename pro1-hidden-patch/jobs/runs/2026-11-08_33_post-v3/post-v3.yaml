@@ -1,4 +1,4 @@
-# Ensembles of UNets with and without the activation maps (unet-v8, unet-v9a, unet-v11). Only the base and soft variants.
+# Ensembles of UNets with and without the activation maps (unet-v8, unet-v9, unet-v10). Only the base and soft variants.
 seed: 0
 tune_fraction: 0.1
 use_ig: true
@@ -11,9 +11,9 @@ chunk: 1500
 thresholds: [0.0, 3.0, 61]
 models:
   v9a: [unet-v9a]
-  v9a_v11: [unet-v9a, unet-v11]
-  v9a_v11_v8b: [unet-v9a, unet-v11, unet-v8b]
-  all5: [unet-v9a, unet-v11, unet-v8a, unet-v8b, unet-v9b]
+  v9a_v10b: [unet-v9a, unet-v10b]
+  four: [unet-v9a, unet-v10a, unet-v10b, unet-v8b]
+  six: [unet-v9a, unet-v10a, unet-v10b, unet-v8a, unet-v8b, unet-v9b]
 soft_radius: 3
 soft_gamma: [0.5, 1.0, 2.0, 4.0]
 soft_pad: [4, 8]
