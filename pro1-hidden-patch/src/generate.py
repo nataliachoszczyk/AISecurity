@@ -30,9 +30,6 @@ ATTACKS = ["pgd_linf_u", "pgd_linf_t", "mifgsm_linf_u", "cw_l2_u"]
 EPS_LEVELS = np.array([2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20]) / 255
 CW_CONSTS = np.logspace(-2, 2, 12)
 CW_LINF = 20 / 255
-# The median strength of each generated attack must be within this gap (in 1/255) of the task data.
-MAX_STRENGTH_GAP = 4.0
-
 
 def amp_model(model, x: torch.Tensor) -> torch.Tensor:
     # fp16 makes the attack steps several times faster on a T4. The final check of the attack uses fp32.
@@ -211,7 +208,8 @@ def generate(part: str, cfg: dict, deadline: float | None, shard: tuple[int, int
     labels = load_labels().merge(load_split(), on="id")
     exclude = tune_ids(cfg["tune_fraction"], cfg["tune_seed"])
     bases = labels[(labels.part == part) & labels.kind.isin(["CLEAN", "DECOY"]) & ~labels.id.isin(exclude)]
-    bases = bases.reset_index(drop=True)
+    # max_bases uses only the first bases, for a smoke test.
+    bases = bases.reset_index(drop=True)[:cfg.get("max_bases")]
     print(f"{part}: {len(bases)} bases", flush=True)
     base_images = dict(zip(bases.id, load_images("train", bases.id)))
     jobs = make_jobs(bases, cfg[f"{part}_copies"], rng, cfg["jpeg"], cfg.get("base_aug", False))[shard[0]::shard[1]]
@@ -330,7 +328,8 @@ def run_generation(cfg: dict) -> None:
         print(summary, flush=True)
         if part == "val":
             # The check runs before the long train part, so an error shows early.
-            check_strength(labels)
+            # A smoke test has few images and a noisy strength distribution, so its config can make the gap larger.
+            check_strength(labels, cfg.get("max_strength_gap", 4.0))
 
     # Kaggle extracts a zip to a folder with the name of the zip. The folder <codename>/ is also an output,
     # so the zip must have a different name.
@@ -347,13 +346,13 @@ def _generate_shard(part: str, cfg: dict, deadline: float | None, shard: tuple[i
     save_set(out_dir / f"{part}_{shard[0]}", labels, images)
 
 
-def check_strength(labels: pd.DataFrame) -> None:
+def check_strength(labels: pd.DataFrame, max_gap: float) -> None:
     """Stop the run if the median strength of an attack is far from the task data. Then the long train part does not start."""
     task = load_labels().groupby("attack").strength.median()
     ours = labels.groupby("attack").strength.median()
     table = pd.DataFrame({"task": task, "generated": ours, "count": labels.attack.value_counts()})
     print(table, flush=True)
     gap = (table.generated - table.task).abs()
-    if (gap > MAX_STRENGTH_GAP).any() or table.generated.isna().any():
+    if (gap > max_gap).any() or table.generated.isna().any():
         raise RuntimeError(f"the strength of the generated attacks is not like the task data:\n{table}")
 

@@ -289,7 +289,8 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
     dtype = np.float16 if cfg.get("half_inputs") else np.float32
     inputs = unet_inputs(resnet, images[~is_tune], cfg, device).astype(dtype, copy=False)
     masks = target_masks(labels[~is_tune]).astype(dtype, copy=False)
-    for name in cfg["generated_sets"]:
+    # generated_sets: the train parts of these generated sets. unet-v9a has no key and uses gen-v4.
+    for name in cfg.get("generated_sets", ["gen-v4"]):
         gen_labels, gen_images = load_set(generated_dir(name) / "train")
         # Data leakage check: the bases of the generated train set must come only from the train part without tune.
         assert gen_labels.base.isin(labels.id[~is_tune]).all(), "a generated image uses a tune or val image as its base"

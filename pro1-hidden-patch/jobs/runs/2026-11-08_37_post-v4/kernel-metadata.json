@@ -8,13 +8,7 @@
   "enable_gpu": true,
   "enable_internet": true,
   "machine_shape": "NvidiaTeslaT4",
-  "dataset_sources": [
-    "jankombajn/bumas-p1-hidden-patch"
-  ],
+  "dataset_sources": ["jankombajn/bumas-p1-hidden-patch"],
   "competition_sources": [],
-  "kernel_sources": [
-    "jankombajn/bumas-p1-gen-v4",
-    "jankombajn/bumas-p1-unet-v9",
-    "jankombajn/bumas-p1-unet-v12"
-  ]
+  "kernel_sources": ["jankombajn/bumas-p1-gen-v4", "jankombajn/bumas-p1-unet-v8", "jankombajn/bumas-p1-unet-v9", "jankombajn/bumas-p1-unet-v10", "jankombajn/bumas-p1-unet-v12", "nataliachoszczyk/bumas-p1-unet-v11", "nataliachoszczyk/bumas-p1-unet-v11b"]
 }

@@ -1,4 +1,4 @@
-"""Generate attacked images with patches at any position."""
+"""Generate attacked images with patches at any position. Score saliency-v1 on the generated val set."""
 import subprocess
 import sys
 
@@ -6,7 +6,7 @@ REPO = "https://github.com/nataliachoszczyk/AISecurity.git"
 BRANCH = "pro1"
 PROJECT = "pro1-hidden-patch"
 CLONE = "/tmp/repo"  # Not in the output folder, so the clone is not an output.
-CODENAME = "gen-v4"
+CODENAMES = ["gen-v4"]
 
 # The generator starts one process for each GPU. A new process imports this file again,
 # so the clone and the run must be only in the main process.
@@ -25,4 +25,5 @@ if __name__ == "__main__":
     from src.config import load_config
     from src.generate import run_generation
 
-    run_generation(load_config(CODENAME))
+    for codename in CODENAMES:
+        run_generation(load_config(codename))

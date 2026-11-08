@@ -307,7 +307,10 @@
 - Open tasks at the end of the project: merge `pro1-experiments` into `pro1` and `main`, and update the README files.
 - act2 soft got 0.6849 on the leaderboard (place 3). The file new7 soft was not sent.
 - Branch `pro1-experiments-final`: the repository keeps only the code and the jobs of act2. The full history of the experiments stays on `pro1-experiments`.
-  - Kept jobs: gen-v4, gen-v5, gen-v6, unet-v9 (only unet-v9a), unet-v12 and post-v4 (only act2). All other job folders are deleted.
-  - `src/`: the options that act2 does not use are deleted. The configs of act2 give the same calculation as before.
-  - `src/boxnet.py` is deleted. `src/post.py` keeps only the ensemble mean and the soft refinement.
-  - The `run.py` files clone the branch `pro1`, because this branch gets the final code.
+  - Kept jobs: smoke (a test of the platform), gen-v4, gen-v5, gen-v6, unet-v9, unet-v12 and post-v4. All other job folders and their rows in `jobs/JOBS.md` are deleted.
+  - In the kept job folders, no file is changed. The outputs that act2 does not need are deleted: the saliency-v1 reports, the unet-v9b outputs and `post-v4/output/post-v4/diagnostics.json`.
+  - The configs `gen-v5-smoke`, `gen-v6-smoke` and `unet-v9b` stay, because the `run.py` of their jobs use them.
+  - The smoke job reads the config post-v4, because the config saliency-v1 is deleted.
+  - `src/`: the options that act2 does not use are deleted. The code reads the configs of act2 without a change. `src/post.py` makes only the act2 ensemble of post-v4.
+  - `src/boxnet.py` is deleted.
+- Job `2026-11-08_39_cleanup-check` (jankombajn, GPU): the cleaned code gives the same results as the old code on a small sample (`output/compare.json`). `src/post.py` was not in the check, because it needs the trained models. TODO: delete this job folder and its row in `jobs/JOBS.md` before the merge.

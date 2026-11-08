@@ -1,0 +1,132 @@
+{
+  "inputs": {
+    "shape_old": [
+      80,
+      10,
+      64,
+      64
+    ],
+    "shape_new": [
+      80,
+      10,
+      64,
+      64
+    ],
+    "max_abs_diff": 0.0
+  },
+  "losses": {
+    "shape_old": [
+      4
+    ],
+    "shape_new": [
+      4
+    ],
+    "max_abs_diff": 0.0
+  },
+  "weights": {
+    "shape_old": [
+      124264
+    ],
+    "shape_new": [
+      124264
+    ],
+    "max_abs_diff": 0.0
+  },
+  "cand_boxes": {
+    "shape_old": [
+      16,
+      12,
+      4
+    ],
+    "shape_new": [
+      16,
+      12,
+      4
+    ],
+    "max_abs_diff": 0.0
+  },
+  "cand_drops": {
+    "shape_old": [
+      16,
+      12
+    ],
+    "shape_new": [
+      16,
+      12
+    ],
+    "max_abs_diff": 0.0
+  },
+  "cand_probs": {
+    "shape_old": [
+      16,
+      2,
+      64,
+      64
+    ],
+    "shape_new": [
+      16,
+      2,
+      64,
+      64
+    ],
+    "max_abs_diff": 0.0
+  },
+  "cand_patch_prob": {
+    "shape_old": [
+      16,
+      12
+    ],
+    "shape_new": [
+      16,
+      12
+    ],
+    "max_abs_diff": 0.0
+  },
+  "tune": {
+    "shape_old": [
+      3
+    ],
+    "shape_new": [
+      3
+    ],
+    "max_abs_diff": 0.0
+  },
+  "choose": {
+    "shape_old": [
+      16,
+      4
+    ],
+    "shape_new": [
+      16,
+      4
+    ],
+    "max_abs_diff": 0.0
+  },
+  "gen_images": {
+    "shape_old": [
+      17,
+      64,
+      64,
+      3
+    ],
+    "shape_new": [
+      17,
+      64,
+      64,
+      3
+    ],
+    "max_abs_diff": 0.0
+  },
+  "gen_boxes": {
+    "shape_old": [
+      17,
+      4
+    ],
+    "shape_new": [
+      17,
+      4
+    ],
+    "max_abs_diff": 0.0
+  },
+  "all_equal": true
+}

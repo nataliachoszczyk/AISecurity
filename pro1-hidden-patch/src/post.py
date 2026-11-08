@@ -19,6 +19,9 @@ from .paths import generated_dir, output_dir
 from .saliency import answers_frame
 from .unet import analyze, choose, load_unet, predict_masks, tune, unet_inputs
 
+# The config of post-v4 has four ensembles. The final answer uses only this one.
+ENSEMBLE = "act2"
+
 
 def integral(maps: np.ndarray) -> np.ndarray:
     """Return the integral images (N, SIZE + 1, SIZE + 1) of maps (N, SIZE, SIZE)."""
@@ -64,7 +67,7 @@ def refine_soft(patch_prob: np.ndarray, answer: np.ndarray, radius: int, gamma: 
 
 
 def run_experiment(cfg: dict, device: str | None = None) -> dict:
-    """Make the ensemble of cfg models, tune the base and the soft answer, score them and write the submission."""
+    """Make the ensemble ENSEMBLE of cfg models, tune the base and the soft answer, score them and write the submission."""
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     out_dir = output_dir() / cfg["codename"]
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +88,7 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
     inputs = {k: unet_inputs(resnet, img, cfg, device) for k, img in images_of.items()}
     # float16 keeps the probabilities of all sets in the host memory.
     model_probs = []
-    for codename in cfg["models"]:
+    for codename in cfg["models"][ENSEMBLE]:
         model = load_unet(codename, device)
         model_probs.append({k: predict_masks(model, x, device).astype(np.float16) for k, x in inputs.items()})
         del model
@@ -102,11 +105,11 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
 
     rows = []
     for variant, ans in answers.items():
-        row = {"model": cfg["name"], "variant": variant, **{k: float(points_array(true[k], ans[k]).mean()) for k in true}}
+        row = {"model": ENSEMBLE, "variant": variant, **{k: float(points_array(true[k], ans[k]).mean()) for k in true}}
         row["test_none"] = float((ans["test"] == 0).all(1).mean())
         row["settings"] = json.dumps(settings[variant])
         rows.append(row)
         print(row, flush=True)
-        answers_frame(test_ids, ans["test"]).to_csv(out_dir / f"submission_{cfg['name']}_{variant}.csv", index=False)
+        answers_frame(test_ids, ans["test"]).to_csv(out_dir / f"submission_{ENSEMBLE}_{variant}.csv", index=False)
     pd.DataFrame(rows).to_csv(out_dir / "results.csv", index=False)
     return {"results": rows}
