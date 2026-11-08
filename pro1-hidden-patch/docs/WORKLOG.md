@@ -283,3 +283,5 @@
 - Job `2026-11-08_34_unet-v13` (nataliachoszczyk): unet-v12 with train_seed 2, for an ensemble.
 - unet-v10 results: unet-v10a (unet-v8b on gen-v4 and gen-v5) val 0.681, tune 0.694. unet-v10b (with 2 transformer layers) val 0.683, tune 0.687. All single models are at val 0.68 ± 0.003.
 - post-v3 now runs on jankombajn with the jankombajn models only (unet-v8, unet-v9, unet-v10), because no share is necessary.
+- unet-v11b result (unet-v11 with 2 transformer layers, train_seed 2): val 0.680, tune 0.696.
+- Job `2026-11-08_35_unet-v14` (nataliachoszczyk): unet-v12 with 2 transformer layers and train_seed 3, for an ensemble.
