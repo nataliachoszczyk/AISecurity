@@ -290,3 +290,6 @@
 - The GPU quota is almost at the end (jankombajn 2 h 20 min, nataliachoszczyk 1 h 28 min at 09:40), and the work must end at 17:00. Thus the user stops unet-v13, unet-v14 and unet-v15. The final ensemble uses the nine trained UNets.
 - `src/post.py`: each model predicts each set only one time, and an ensemble is the mean of these probabilities. `analyze` in `src/unet.py` accepts the probabilities. Thus more ensembles need little more GPU time.
 - Job `2026-11-08_37_post-v4` (jankombajn): four ensembles that are fixed before the run. The final choice uses the tune points, so that the val points stay a fair estimate.
+- unet-v12 result (unet-v9a on the three generated sets, 100 epochs): val 0.691, tune 0.698. It is the best single model.
+- The post-v4 smoke test (account nataliachoszczyk) passed. post-v4 runs on jankombajn since 10:15.
+- Next step: read `results.csv` of post-v4. Select the ensemble with the most tune points. Submit only if its val points are more than 0.70.
