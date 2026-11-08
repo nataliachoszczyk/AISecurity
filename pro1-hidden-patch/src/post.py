@@ -296,10 +296,8 @@ def run_experiment(cfg: dict, device: str | None = None) -> dict:
     inputs_key, inputs, box_inputs, energy = None, None, None, None
     for model_name, codenames in cfg["models"].items():
         unet = load_ensemble(codenames, device)
-        # The input maps depend on the config of the models. All models of one ensemble need the same input.
-        use_act = {bool(load_config(c).get("use_act")) for c in codenames}
-        assert len(use_act) == 1, f"{model_name}: the models need different inputs"
-        model_cfg = cfg | {"use_act": use_act.pop()}
+        # The input maps depend on the config of the models. A model without the activation maps uses the first channels.
+        model_cfg = cfg | {"use_act": any(load_config(c).get("use_act") for c in codenames)}
         if inputs_key != model_cfg["use_act"]:
             inputs_key = model_cfg["use_act"]
             inputs = {k: unet_inputs(resnet, img, model_cfg, device) for k, img in images_of.items()}

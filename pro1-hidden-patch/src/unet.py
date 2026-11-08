@@ -364,14 +364,18 @@ def mask_iou(probs: np.ndarray, masks: np.ndarray) -> float:
 
 
 class Ensemble(nn.Module):
-    """The mean probability of several trained UNets. forward returns the logit of this mean."""
+    """The mean probability of several trained UNets. forward returns the logit of this mean.
+
+    The models can have different inputs. The input channels are RGB, the IG map and then the activation maps.
+    Thus each model gets the first channels that it knows (its first convolution adds the 3 residual channels).
+    """
 
     def __init__(self, models: list[UNet]):
         super().__init__()
         self.models = nn.ModuleList(models)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        p = torch.stack([torch.sigmoid(m(x)) for m in self.models]).mean(0)
+        p = torch.stack([torch.sigmoid(m(x[:, :m.down[0][0].in_channels - 3])) for m in self.models]).mean(0)
         return torch.logit(p.clamp(1e-6, 1 - 1e-6))
 
 

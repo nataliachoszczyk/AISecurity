@@ -277,3 +277,7 @@
 - unet-v9 results. unet-v9a (unet-v8b plus the 6 activation maps): val 0.684, tune 0.692. unet-v9b (width 96, 160 epochs): val 0.669, tune 0.670. The activation maps help (+0.008 to unet-v8b). The larger UNet does not help. The tune points of unet-v9a increased until the last epochs.
 - New option `half_inputs` in `src/unet.py`: the train inputs and masks are float16. Each batch changes to float32 before the UNet. With the activation maps, 97000 images need 7.8 GB on the GPU as float16 (15.5 GB as float32).
 - Job `2026-11-08_32_unet-v12` (jankombajn): unet-v9a on the real images and the three generated sets, 100 epochs.
+- unet-v11 result (unet-v8b on the three generated sets, 120 epochs): val 0.681, tune 0.687. More generated images help a little (unet-v8b: val 0.676).
+- `Ensemble` in `src/unet.py` accepts models with different inputs. Each model gets the first channels that it knows (RGB, IG, then the activation maps). `src/post.py` calculates the activation maps if one model of the ensemble needs them.
+- A notebook of one account cannot read the new outputs of the other account (unet-v9 and unet-v11 give 403). The user must share them before an ensemble of both accounts can run. The job `2026-11-08_33_post-v3` (ensembles of unet-v8, unet-v9a and unet-v11) waits for this.
+- Job `2026-11-08_34_unet-v13` (nataliachoszczyk): unet-v12 with train_seed 2, for an ensemble.
