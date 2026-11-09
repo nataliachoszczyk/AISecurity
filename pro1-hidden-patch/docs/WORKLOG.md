@@ -322,3 +322,4 @@
 - Updated the main `README.md`: a short description of project 1 and the val score. The Setup section is deleted.
 - New README images in `assets/`: `positions.png` (patch positions: train, gen-v4, test answers), `pipeline.png` (the flow of training and prediction, with one val image with a weak patch) and `example.png` (three examples with the residual, IG and UNet maps). The images come from the data of the solution report.
 - New README images `training.png` (loss and tune/val points for each epoch of unet-v9a and unet-v12) and `threshold.png` (points for each threshold q, and the q values of the val images). `pipeline.png` now describes each step in more detail.
+- Updated the main `README.md` again: new title "AI/ML Security", a short introduction to AI security, a table of contents, the `example.png` image, the solution in four steps and a results table with val and gen val.
