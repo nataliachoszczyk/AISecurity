@@ -17,9 +17,21 @@ venv/
 CLAUDE.local.md
 .claude/settings.local.json
 kaggle.json
+# Kaggle token of one project (jobs/kaggle.sh)
+.kaggle/
 .vscode/
 .idea/
 
 # OS files
 *:Zone.Identifier
 .DS_Store
+
+# Submissions stay local: the repository is public
+**/submissions/*.csv
+
+# Kaggle outputs: only small results go into git. Images can show task data, and the repository is public.
+**/jobs/runs/*/output/**/*.npy
+**/jobs/runs/*/output/**/*.npz
+**/jobs/runs/*/output/**/*.png
+**/jobs/runs/*/output/**/*.log
+**/jobs/runs/*/output/**/submission_*.csv

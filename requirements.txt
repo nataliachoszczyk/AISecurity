@@ -8,7 +8,9 @@ numpy
 pandas
 pillow
 scikit-learn
+scipy
 matplotlib
 tqdm
+pyyaml
 jupyter
 kaggle
