@@ -1,4 +1,4 @@
-AI & Machine Learning Security
+# AI & Machine Learning Security
 
   
 **Framework:** PyTorch | **Language:** Python
@@ -24,22 +24,15 @@ Each project is in a separate folder. Each folder has a README with the full rep
 
 Each 64 × 64 image can contain one rectangle with weak adversarial noise against ResNet-18. Some images also contain decoys: rectangles with random noise that do not change the prediction. The task is to find the box of the adversarial patch, or to answer `0,0,0,0` if the image has no patch. The score is the mean IoU.
 
+What we did:
+
+- The train patches are only in the bottom half, but approximately half of the test patches are in the top half. Thus we attacked ResNet-18 ourselves and made 92,166 new images with the patch at any position.
+- Two UNets draw a map of the patch. Their input is the image and maps from ResNet-18 that show where the noise changes the decision.
+- For the best boxes on the map, we remove the noise and run ResNet-18 again. Only the true patch changes the class. If no box changes it, the answer is `0,0,0,0`.
+
+Result on our validation set (500 train images that no step used for training or tuning):
+
 | Method              | Score ↑ |
 |---------------------|:-------:|
-| All `0,0,0,0`       | 0.2000  |
-| Course baseline     | 0.2200  |
-| **Our solution**    | TBD     |
-
----
-
-## Setup
-
-The projects use one virtual environment in the root folder.
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-The local machines have no GPU. Long computations run on Kaggle. The data of each project is a private Kaggle dataset.
+| All `0,0,0,0`       | 0.200   |
+| **Our solution**    | **0.707** |

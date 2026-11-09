@@ -315,3 +315,9 @@
   - `src/boxnet.py` is deleted.
 - Job `2026-11-08_39_cleanup-check` (jankombajn, GPU): the cleaned code gives the same results as the old code on a small sample (`output/compare.json`). `src/post.py` was not in the check, because it needs the trained models. After the check, the job folder and its row in `jobs/JOBS.md` are deleted.
 - `docs/RESULTS.md`: new row for act2 (leaderboard 0.6849).
+
+## 2026-11-09
+
+- Updated `README.md` of the project: a short report for a 5-minute talk (task, findings, method, evaluation, results). The results show tune, val and gen val only. The table shows unet-v9a, unet-v12 and the final ensemble with the full method (post-v4, soft).
+- Updated the main `README.md`: a short description of project 1 and the val score. The Setup section is deleted.
+- New README images in `assets/`: `positions.png` (patch positions: train, gen-v4, test answers), `pipeline.png` (the flow of training and prediction, with one val image with a weak patch) and `example.png` (three examples with the residual, IG and UNet maps). The images come from the data of the solution report.
