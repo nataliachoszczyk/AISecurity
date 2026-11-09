@@ -36,6 +36,12 @@ The two UNets have the same structure. They differ only in the data and the trai
 | unet-v9a | 4,050       | 30,436           | 200    |
 | unet-v12 | 4,050       | 92,166           | 100    |
 
+Every 5 epochs, the full method runs on the tune images, and the epoch with the most points is kept (unet-v9a: epoch 194 of 200, unet-v12: the last epoch). The loss on tune stops to fall early, but the points continue to increase. Thus we select the epoch by the points and not by the loss.
+
+![Training](assets/training.png)
+
+*Left: the loss on the train and tune images. Right: the points of the full method on tune and val. The vertical lines show the selected epochs.*
+
 ### Prediction
 
 1. We compare the image with its filtered copy and ask ResNet-18 which pixels make its answer. The UNet gets 13 input channels:
@@ -47,6 +53,12 @@ The two UNets have the same structure. They differ only in the data and the trai
 3. The task allows 202 box sizes: all widths and heights in pixels with an area of 8-15% of the image and any ratio between 1:2 and 2:1 (for example 13 × 26, 20 × 20 or 34 × 18). We try every size at every position on the maps and keep the 6 best boxes on each map.
 4. For each of these 12 boxes, we filter only the inside of the box and ask ResNet-18 again. If no box changes its answer enough, the answer is `0,0,0,0`.
 5. Else we take the box with the highest mean value on the patch map. We move each side by up to 3 pixels, so that the box fits the patch map better.
+
+The threshold of step 4 is a balance. A low threshold gives boxes on clean and decoy-only images, which then get 0 points instead of 1. A high threshold answers `0,0,0,0` for weak patches, which then get 0 points instead of their IoU. We tried 61 thresholds from 0 to 3 on the tune images, and 1.2 gave the most points. The val images, which no choice uses, give almost the same curve.
+
+![Threshold](assets/threshold.png)
+
+*Left: the mean points for each threshold. Right: the value q (largest drop of the ResNet-18 margin divided by the margin) on the val images. Most images without a patch have q below 1, and most images with a patch have q far above 1.*
 
 ![Examples](assets/example.png)
 

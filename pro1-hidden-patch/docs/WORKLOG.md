@@ -321,3 +321,4 @@
 - Updated `README.md` of the project: a short report for a 5-minute talk (task, findings, method, evaluation, results). The results show tune, val and gen val only. The table shows unet-v9a, unet-v12 and the final ensemble with the full method (post-v4, soft).
 - Updated the main `README.md`: a short description of project 1 and the val score. The Setup section is deleted.
 - New README images in `assets/`: `positions.png` (patch positions: train, gen-v4, test answers), `pipeline.png` (the flow of training and prediction, with one val image with a weak patch) and `example.png` (three examples with the residual, IG and UNet maps). The images come from the data of the solution report.
+- New README images `training.png` (loss and tune/val points for each epoch of unet-v9a and unet-v12) and `threshold.png` (points for each threshold q, and the q values of the val images). `pipeline.png` now describes each step in more detail.
