@@ -15,4 +15,6 @@
 - The job `data` failed at first, because the account `jeronimoo` had no phone verification and the kernel had no internet.
 - Version 2 of the job `data` is complete: all 610 files (4.62 GB) are in the kernel output.
 - The private dataset `jeronimoo/bumas-p2-backdoors` has the output of the job `data`: 610 files, 4.62 GB. The account `jankombajn` is a reader of it.
+- Decision: `model.py` of the task stays in the dataset. The repository has no copy of it.
+- Added `src/paths.py`. It finds the task data and the output folder on Kaggle and on the local machine. It also loads a model with `model.py` from the dataset.
 - The folder `example/` is also in the local `data/` folder (not in git). It shows the train labels: three models with one backdoor each (ASR 0.964, 0.999 and 0.581) and three clean models. The clean accuracy is 0.84 to 0.85 for all six models.
