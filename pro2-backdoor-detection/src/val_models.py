@@ -3,6 +3,7 @@ import json
 import math
 import pickle
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -31,6 +32,14 @@ DEADLINE_HOURS = 10.5
 
 # Data: ImageNet 64x64 (Chrabaszcz et al.). The label order of this format is not the usual ImageNet order.
 
+def imagenet_files(pattern: str) -> list:
+    """Return the files of the pattern. The dataset has two copies of each file, so keep one path for each name."""
+    by_name = {}
+    for path in sorted(imagenet_dir().rglob(pattern)):
+        by_name.setdefault(path.name, path)
+    return [by_name[k] for k in sorted(by_name)]
+
+
 def read_batch(path) -> tuple[np.ndarray, np.ndarray]:
     with open(path, "rb") as f:
         d = pickle.load(f)
@@ -42,7 +51,7 @@ def class_map(device: str) -> pd.DataFrame:
     """Find the ImageNet64 label of each task class: the label whose images the clean base models put most often into the class."""
     from scipy.optimize import linear_sum_assignment
 
-    x, labels = read_batch(next(imagenet_dir().rglob("val_data")))
+    x, labels = read_batch(imagenet_files("val_data")[0])
     votes = np.zeros((1000, N_CLASSES))
     for base in BASES:
         net = load_model(data_dir() / f"example/train/models/{base}.pt", device)
@@ -64,7 +73,7 @@ def imagenet_subset(mapping: np.ndarray) -> dict[str, np.ndarray]:
     out = {}
     for part, pattern in (("train", "train_data_batch_*"), ("val", "val_data")):
         xs, ys = [], []
-        for path in sorted(imagenet_dir().rglob(pattern)):
+        for path in imagenet_files(pattern):
             x, labels = read_batch(path)
             keep = lookup[labels] >= 0
             xs.append(x[keep])
@@ -73,6 +82,20 @@ def imagenet_subset(mapping: np.ndarray) -> dict[str, np.ndarray]:
             print(f"{path.name}: {keep.sum()} images of the task classes", flush=True)
         out[f"x_{part}"], out[f"y_{part}"] = np.concatenate(xs), np.concatenate(ys)
     return out
+
+
+@torch.no_grad()
+def copy_check(data: dict) -> dict[int, float]:
+    """Return, for each class, the fraction of task images with a near copy in the ImageNet train images of the mapped label.
+    A high fraction confirms the class map. A low fraction is not an error: the task can use other images."""
+    x_task, y_task = clean_images()
+    result = {}
+    for c in range(N_CLASSES):
+        ref = torch.from_numpy(data["x_train"][data["y_train"] == c]).float().div(255).flatten(1).cuda()
+        task = x_task[y_task == c].flatten(1).cuda()
+        dist = torch.cdist(task, ref).min(1).values / task.shape[1] ** 0.5
+        result[c] = round((dist < 0.02).float().mean().item(), 2)
+    return result
 
 
 # Triggers. Each function gets images (N, 3, 64, 64) in [0, 1] and the fixed parameters of one backdoor.
@@ -320,6 +343,8 @@ def run(out, smoke: bool) -> None:
     assert table["score"].min() > 0.3, "the class map is not clear"
     data = imagenet_subset(table["label"].to_numpy())
     print({k: v.shape for k, v in data.items()}, np.bincount(data["y_train"]).tolist(), flush=True)
+    print("task images with a near copy in the train images of their mapped label:", copy_check(data), flush=True)
+    Path(CACHE).parent.mkdir(parents=True, exist_ok=True)
     np.savez(CACHE, **data)
     del data
     torch.cuda.empty_cache()

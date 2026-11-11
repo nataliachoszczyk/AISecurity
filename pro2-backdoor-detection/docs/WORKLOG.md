@@ -57,3 +57,6 @@
   - The job uses the 2 GPUs of a T4 x2 session (one process for each GPU). It stops a GPU process if the first model has a clean accuracy below 0.7, and it stops new models after 10.5 hours.
 - Added `imagenet_dir()` to `src/paths.py`.
 - Version 4 of the job `val-models-smoke` failed: the import of `src` found no module. `run.py` adds the folder to `sys.path` before the clone, so the import cache must be cleared after the clone. Added `importlib.invalidate_caches()`.
+- Version 5 of the job `val-models-smoke` failed at the save of the cache: the folder `/kaggle/temp` did not exist. The class map was clear for most classes (score 0.69 to 0.98), but for 4 classes the second label had almost the same score (for example toucan 0.89 and 0.87).
+- The dataset `j53t3r/imagenet64x64` has two copies of each file. The code now keeps one path for each file name (51 740 images became approximately 25 900).
+- Added a check of the class map: the fraction of task images with a near copy in the ImageNet train images of the mapped label.
