@@ -16,6 +16,13 @@ def data_dir() -> Path:
     return PROJECT_DIR / "data"
 
 
+def imagenet_dir() -> Path:
+    """Return the folder of the ImageNet 64x64 dataset (only on Kaggle)."""
+    matches = sorted(KAGGLE_INPUT.rglob("val_data"))
+    assert matches, "no ImageNet 64x64 data in /kaggle/input"
+    return matches[0].parents[1]
+
+
 def output_dir() -> Path:
     """Return a writable folder for results and submissions."""
     if KAGGLE_INPUT.exists():

@@ -1,4 +1,4 @@
-"""Smoke test of the job val-models: the first validation models with different finetune settings."""
+"""Smoke test of the job val-models: one clean model and one model for each trigger type, on 2 GPUs."""
 import subprocess
 import sys
 
@@ -7,25 +7,20 @@ BRANCH = "pro2-experiments"
 PROJECT = "pro2-backdoor-detection"
 CLONE = "/tmp/repo"  # Not in the output folder, so the clone is not an output.
 CODENAME = "val-models-smoke"
-LIMIT = 3
+SMOKE = True
 
-import torch
-
-# A finetune on the CPU wastes hours, so stop immediately without a GPU.
-assert torch.cuda.is_available(), "no GPU"
-
-subprocess.run(["git", "clone", "--depth", "1", "--branch", BRANCH, "--filter=blob:none", "--sparse", REPO, CLONE], check=True)
-subprocess.run(["git", "-C", CLONE, "sparse-checkout", "set", PROJECT], check=True)
-print("commit", subprocess.run(["git", "-C", CLONE, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip())
+# Each worker process imports this file again. It needs the path, but not the clone.
 sys.path.insert(0, f"{CLONE}/{PROJECT}")
 
-from src import val_models as vm
-from src.paths import output_dir
+if __name__ == "__main__":
+    import torch
 
-# Version 3 is a diagnosis: the finetune of version 2 gave one answer for all images.
-vm.VERBOSE = True
-vm.MAX_ATTEMPTS = 1
-for name, bn_train, distill in [("bn-train-distill", True, 1.0), ("bn-eval-distill", False, 1.0), ("bn-eval", False, 0.0)]:
-    print("=== setting", name, flush=True)
-    vm.BN_TRAIN, vm.DISTILL = bn_train, distill
-    vm.build(output_dir() / CODENAME / name, "cuda", LIMIT)
+    assert torch.cuda.device_count() == 2, "this job needs 2 GPUs (T4 x2)"
+    subprocess.run(["git", "clone", "--depth", "1", "--branch", BRANCH, "--filter=blob:none", "--sparse", REPO, CLONE], check=True)
+    subprocess.run(["git", "-C", CLONE, "sparse-checkout", "set", PROJECT], check=True)
+    print("commit", subprocess.run(["git", "-C", CLONE, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip())
+
+    from src.paths import output_dir
+    from src.val_models import run
+
+    run(output_dir() / CODENAME, SMOKE)

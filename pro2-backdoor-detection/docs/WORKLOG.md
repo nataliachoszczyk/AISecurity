@@ -46,3 +46,13 @@
 - Changed the finetune: the BatchNorm layers stay in eval mode, the learning rate is 0.002 (not 0.005), and a distillation loss keeps the answers of the base model on the clean finetune images. The warp amplitude starts at 2 to 3 pixels (not 1 to 2).
 - Version 2 of the job `val-models-smoke`: all models, also the clean models, gave one class for almost all images (clean accuracy 0.05). The cause is not known.
 - Version 3 of the job `val-models-smoke` is a diagnosis. It compares 3 finetune settings on 3 models: BN in train mode with distillation, BN in eval mode with distillation, BN in eval mode without distillation. It writes the loss and the base accuracy.
+- Version 3 of the job `val-models-smoke`: the base models have an accuracy of 0.81 on the holdout images, so the measurement is correct. A finetune on 200 images decreases the accuracy in all settings (BN train with distillation: 0.62 to 0.69; BN eval without distillation: 0.64 to 0.69; BN eval with distillation diverges to 0.05). Without distillation, the train loss goes to 0.003: the model learns the 200 images by heart. Only 1 of 6 backdoors got an ASR of 0.5 or more.
+- Conclusion: 200 images are not sufficient for a realistic finetune. An option is the Kaggle dataset `ayaroshevskiy/downsampled-imagenet-64x64` (ImageNet at 64 x 64, all 1000 classes). The 20 task classes are ImageNet classes.
+- Decision: the validation models use ImageNet 64x64 images of the 20 task classes. The dataset `ayaroshevskiy/downsampled-imagenet-64x64` has no labels, so the jobs use `j53t3r/imagenet64x64` (the format of Chrabaszcz et al., with labels). Its label order is not the usual ImageNet order.
+- Changed `src/val_models.py`:
+  - The job finds the ImageNet64 label of each task class. The 3 clean base models classify the 50 000 ImageNet val images, and a linear assignment selects the label with the most votes for each class (`class_map.csv`).
+  - The finetune set has approximately 1 300 ImageNet train images for each class (approximately 26 000 images). The ImageNet val images (50 for each class) measure the ASR. The 400 task images measure the clean accuracy and stay free for the detectors.
+  - The finetune is like the finetune of the task: a new random output layer, then 4 epochs on all layers (SGD, one-cycle learning rate 0.01, batch 128, crop and flip, mixed precision).
+  - A clean-label or targeted poison takes at most half of one class.
+  - The job uses the 2 GPUs of a T4 x2 session (one process for each GPU). It stops a GPU process if the first model has a clean accuracy below 0.7, and it stops new models after 10.5 hours.
+- Added `imagenet_dir()` to `src/paths.py`.
