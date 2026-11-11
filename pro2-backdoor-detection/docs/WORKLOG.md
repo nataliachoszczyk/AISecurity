@@ -18,3 +18,10 @@
 - Decision: `model.py` of the task stays in the dataset. The repository has no copy of it.
 - Added `src/paths.py`. It finds the task data and the output folder on Kaggle and on the local machine. It also loads a model with `model.py` from the dataset.
 - The folder `example/` is also in the local `data/` folder (not in git). It shows the train labels: three models with one backdoor each (ASR 0.964, 0.999 and 0.581) and three clean models. The clean accuracy is 0.84 to 0.85 for all six models.
+
+## 2026-11-11
+
+- The work continues on the branch `pro2-experiments`. The Kaggle jobs run on the account `jeronimoo`.
+- Decision: no Neural Cleanse baseline. The models have the same base, the same data and the same finetune. Thus a comparison of a class with the same class in the other models can show a backdoor.
+- Added `src/model_stats.py`. It collects statistics of the weights and of the answers of each model. It compares each class with the same class in all 206 models (z-score). The seed is 0.
+- Added the job `2026-11-11_02_model-eda`. It is the EDA of the models.
