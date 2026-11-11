@@ -64,3 +64,8 @@
 - No task image has a near copy in ImageNet64, so the copy check cannot confirm the class map. The task images probably have a different downsampling.
 - Problem: the warp model has an accuracy of 0.615 on the task images, but 0.91 on the ImageNet val images. Probably the model learned the blur of the warp, and the softer task images partly activate the backdoor.
 - Added the noise mode of WaNet: for each warp backdoor, the same number of other images gets a different random warp and keeps its label. The early accuracy check now uses only clean models.
+
+## 2026-11-12
+
+- Version 7 of the job `val-models-smoke` is complete (15 minutes). All 5 models are valid. ASR: 0.63 to 0.99. Clean accuracy on the task images: 0.735 to 0.82 (warp 0.74 after the noise mode, clean model 0.80, base 0.81). A targeted patch backdoor got an ASR of 0.98.
+- Started the job `2026-11-11_04_val-models` (120 models, T4 x2).
