@@ -171,6 +171,8 @@ def add_zscores(classes: pd.DataFrame, stats: list[str]) -> pd.DataFrame:
     """Compare each class with the same class in all other models: the task models are near copies of each other."""
     by_class = classes.groupby("cls")[stats]
     z = (classes[stats] - by_class.transform("mean")) / by_class.transform("std")
+    # A statistic with the same value in all models (std 0) tells nothing.
+    z = z.replace([np.inf, -np.inf], np.nan).fillna(0)
     return classes.join(z.add_prefix("z_"))
 
 

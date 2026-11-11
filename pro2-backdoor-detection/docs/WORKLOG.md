@@ -26,3 +26,4 @@
 - Added `src/model_stats.py`. It collects statistics of the weights and of the answers of each model. It compares each class with the same class in all 206 models (z-score). The seed is 0.
 - Added the job `2026-11-11_02_model-eda`. It is the EDA of the models.
 - Version 1 of the job `model-eda` failed: the image id in `clean/labels.csv` has no file extension. The code now searches for `images/<id>.*`.
+- Version 2 of the job `model-eda` failed at the AUC step: a z-score of a statistic with std 0 was NaN. Now such a z-score is 0. The job saves the raw tables first and catches errors of the analysis, because Kaggle deletes all output of a failed job.
