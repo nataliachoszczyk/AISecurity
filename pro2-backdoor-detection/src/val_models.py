@@ -20,6 +20,8 @@ TARGETED_FRACTION = 0.2
 EPOCHS = 30
 LR = 0.002
 DISTILL = 1.0
+BN_TRAIN = False
+VERBOSE = False
 MIN_ASR = 0.5
 MAX_ATTEMPTS = 4
 
@@ -160,8 +162,9 @@ def finetune(net: torch.nn.Module, x: torch.Tensor, y: torch.Tensor, clean: torc
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, EPOCHS)
     x, y, clean = x.to(device), y.to(device), clean.to(device)
     # Eval mode keeps the BatchNorm statistics of the base model: 200 images cannot give good statistics.
-    net.eval()
-    for _ in range(EPOCHS):
+    net.train(BN_TRAIN)
+    for epoch in range(EPOCHS):
+        losses = []
         for idx in torch.randperm(len(x), generator=g).split(32):
             xb = x[idx]
             # Random crop (pad 4) and horizontal flip, the usual augmentation of small images.
@@ -179,8 +182,11 @@ def finetune(net: torch.nn.Module, x: torch.Tensor, y: torch.Tensor, clean: torc
             opt.zero_grad()
             loss.backward()
             opt.step()
+            losses.append(loss.item())
         sched.step()
-    return net
+        if VERBOSE and epoch % 5 in (0, 4):
+            print(f"  epoch {epoch} loss {np.mean(losses):.4f}", flush=True)
+    return net.eval()
 
 
 @torch.no_grad()
@@ -212,6 +218,8 @@ def build(out, device: str, limit: int | None = None) -> pd.DataFrame:
                 b["params"] = trigger_params(b["type"], rng, strength)
             xp, yp, clean = poison(x[ft], y[ft], plan["backdoors"], rng)
             base = load_model(data_dir() / f"example/train/models/{plan['base']}.pt", device)
+            if VERBOSE:
+                print(f"  base accuracy on the holdout images {accuracy(base, x[ho], y[ho], device):.3f}", flush=True)
             net = finetune(base, xp, yp, clean, plan["seed"], device)
             asr = [attack_success(net, x[ho], y[ho], b, device) for b in plan["backdoors"]]
             if all(a >= MIN_ASR for a in asr):

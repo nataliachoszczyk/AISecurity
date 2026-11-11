@@ -1,4 +1,4 @@
-"""Smoke test of the job val-models: the first 12 validation models."""
+"""Smoke test of the job val-models: the first validation models with different finetune settings."""
 import subprocess
 import sys
 
@@ -7,7 +7,7 @@ BRANCH = "pro2-experiments"
 PROJECT = "pro2-backdoor-detection"
 CLONE = "/tmp/repo"  # Not in the output folder, so the clone is not an output.
 CODENAME = "val-models-smoke"
-LIMIT = 12
+LIMIT = 3
 
 import torch
 
@@ -19,9 +19,13 @@ subprocess.run(["git", "-C", CLONE, "sparse-checkout", "set", PROJECT], check=Tr
 print("commit", subprocess.run(["git", "-C", CLONE, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip())
 sys.path.insert(0, f"{CLONE}/{PROJECT}")
 
+from src import val_models as vm
 from src.paths import output_dir
-from src.val_models import build
 
-labels = build(output_dir() / CODENAME, "cuda", LIMIT)
-print(labels.groupby(labels["targets"].str.count(";") + (labels["targets"] != "")).agg(models=("id", "size"), valid=("valid", "sum"), attempts=("attempts", "mean")))
-print("mean clean accuracy:", labels["clean_acc"].mean())
+# Version 3 is a diagnosis: the finetune of version 2 gave one answer for all images.
+vm.VERBOSE = True
+vm.MAX_ATTEMPTS = 1
+for name, bn_train, distill in [("bn-train-distill", True, 1.0), ("bn-eval-distill", False, 1.0), ("bn-eval", False, 0.0)]:
+    print("=== setting", name, flush=True)
+    vm.BN_TRAIN, vm.DISTILL = bn_train, distill
+    vm.build(output_dir() / CODENAME / name, "cuda", LIMIT)
