@@ -27,3 +27,18 @@
 - Added the job `2026-11-11_02_model-eda`. It is the EDA of the models.
 - Version 1 of the job `model-eda` failed: the image id in `clean/labels.csv` has no file extension. The code now searches for `images/<id>.*`.
 - Version 2 of the job `model-eda` failed at the AUC step: a z-score of a statistic with std 0 was NaN. Now such a z-score is 0. The job saves the raw tables first and catches errors of the analysis, because Kaggle deletes all output of a failed job.
+- Version 3 of the job `model-eda` is complete (9 minutes on a T4). The small outputs are in `jobs/runs/2026-11-11_02_model-eda/output/model-eda/`.
+- Result: the finetune changes all layers by approximately 5% to 25% of their norm. The poisoned train models have the same layer distances as the clean train models.
+- Result: the output layer of each model is very different from the mean (relative distance 1.8), because the finetune starts it from a random seed.
+- Result: the weight sketches (PCA) show no groups of models. The poisoned train models are not separate from the clean train models.
+- Result: the best statistic is `z_clean_logit`: the mean logit of a class on the clean images of the other classes, compared with the same class in all models. On the train pairs, its AUC is 0.96, and the target classes have the ranks 1, 1 and 7 in their models.
+- Result: Gaussian noise activates the backdoor of one train model (`z_gauss_logit` = 11). The fraction of answers with high confidence on random noise changes much between models (0.32 to 1.00), also for clean models.
+- Note: the train set has only 3 positive pairs, and the job tested 34 statistics. Thus the AUC values are not reliable.
+- Check of the train score: the AUC of `z_clean_logit` is 0.957 (bootstrap over the 6 models, 5% to 95%: 0.83 to 1.00).
+- Check of the train score: the best of 34 random statistics gets a median AUC of 0.88 on the same 120 train pairs (95th percentile 0.95). Thus the 6 train models cannot show the difference between methods.
+- Check of the train score: leave-one-model-out with the selection of the best statistic gives an AUC of 0.33.
+- Decision: the project needs its own validation set of models with known backdoors.
+- Added `src/val_models.py`. It makes validation models with known backdoors. It finetunes the 3 clean train models for 30 epochs on 200 of the 400 clean images. The other 200 images (holdout) measure the ASR and the clean accuracy. A detector must use only the holdout images on these models.
+- The plan has 120 models: 60 clean, 35 with 1, 17 with 2 and 8 with 3 backdoors. The trigger types are patch, blend, sig, warp, noise and color. SIG is clean-label. 20% of the other backdoors are targeted on one source class. The clean models get the same finetune without poison.
+- A model is valid only if each backdoor has an ASR of 0.5 or more. After a failure, the next attempt makes the triggers stronger (at most 4 attempts). The seed is 0.
+- Added the jobs `2026-11-11_03_val-models-smoke` (12 models) and `2026-11-11_04_val-models` (120 models).
