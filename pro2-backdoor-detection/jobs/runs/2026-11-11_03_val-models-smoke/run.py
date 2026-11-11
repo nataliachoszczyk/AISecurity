@@ -20,6 +20,9 @@ if __name__ == "__main__":
     subprocess.run(["git", "-C", CLONE, "sparse-checkout", "set", PROJECT], check=True)
     print("commit", subprocess.run(["git", "-C", CLONE, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip())
 
+    # The path was added before the clone existed, so Python must forget its empty listing of the folder.
+    import importlib
+    importlib.invalidate_caches()
     from src.paths import output_dir
     from src.val_models import run
 

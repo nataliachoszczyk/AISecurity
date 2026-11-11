@@ -56,3 +56,4 @@
   - A clean-label or targeted poison takes at most half of one class.
   - The job uses the 2 GPUs of a T4 x2 session (one process for each GPU). It stops a GPU process if the first model has a clean accuracy below 0.7, and it stops new models after 10.5 hours.
 - Added `imagenet_dir()` to `src/paths.py`.
+- Version 4 of the job `val-models-smoke` failed: the import of `src` found no module. `run.py` adds the folder to `sys.path` before the clone, so the import cache must be cleared after the clone. Added `importlib.invalidate_caches()`.
