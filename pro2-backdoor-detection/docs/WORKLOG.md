@@ -60,3 +60,7 @@
 - Version 5 of the job `val-models-smoke` failed at the save of the cache: the folder `/kaggle/temp` did not exist. The class map was clear for most classes (score 0.69 to 0.98), but for 4 classes the second label had almost the same score (for example toucan 0.89 and 0.87).
 - The dataset `j53t3r/imagenet64x64` has two copies of each file. The code now keeps one path for each file name (51 740 images became approximately 25 900).
 - Added a check of the class map: the fraction of task images with a near copy in the ImageNet train images of the mapped label.
+- Version 6 of the job `val-models-smoke` is complete (16 minutes). The finetune set has 25 870 images (approximately 1 300 for each class). 4 models: ASR 0.80 to 0.99, ImageNet val accuracy 0.91 to 0.93. The clean model has an accuracy of 0.80 on the task images (base 0.81). One model takes approximately 150 seconds.
+- No task image has a near copy in ImageNet64, so the copy check cannot confirm the class map. The task images probably have a different downsampling.
+- Problem: the warp model has an accuracy of 0.615 on the task images, but 0.91 on the ImageNet val images. Probably the model learned the blur of the warp, and the softer task images partly activate the backdoor.
+- Added the noise mode of WaNet: for each warp backdoor, the same number of other images gets a different random warp and keeps its label. The early accuracy check now uses only clean models.

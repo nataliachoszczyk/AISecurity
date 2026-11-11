@@ -219,6 +219,11 @@ def poison(x: torch.Tensor, y: torch.Tensor, backdoors: list[dict], rng: np.rand
             pick = rng.permutation(np.flatnonzero(free & (labels != b["target"])))[:n]
         add(pick, b)
         y[torch.from_numpy(pick).to(y.device)] = b["target"]
+        if b["type"] == "warp":
+            # Noise mode of WaNet: other images get a different random warp and keep their label.
+            # Without it, the model learns the blur of the warp, and soft images go to the target.
+            decoy = {**b, "params": {**b["params"], "pattern_seed": int(rng.integers(1 << 31))}}
+            add(rng.permutation(np.flatnonzero(free))[:len(pick)], decoy)
     return x, y
 
 
@@ -311,8 +316,8 @@ def make_models(plans: list[dict], data: dict, out, device: str, log_name: str) 
         print(f"[{log_name}] plan {plan['index']} {r['id']} types={r['types']} variants={r['variants']} asr={r['asr']} "
               f"acc={r['clean_acc']} imagenet_acc={r['imagenet_acc']} attempts={attempt} valid={ok} {time.time() - t0:.0f}s", flush=True)
         pd.DataFrame(rows).to_csv(out / f"labels_{log_name}.csv", index=False)
-        if len(rows) == 1 and r["clean_acc"] < MIN_ACC:
-            # Early check: a model far below the real models makes the validation set useless, so stop.
+        if not plan["backdoors"] and r["clean_acc"] < MIN_ACC:
+            # Early check: a clean model far below the real models shows a bad finetune, so stop.
             print(f"[{log_name}] clean accuracy {r['clean_acc']} < {MIN_ACC}: stop", flush=True)
             break
     return pd.DataFrame(rows)
