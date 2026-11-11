@@ -46,11 +46,16 @@ def read_batch(path) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(d["data"], dtype=np.uint8).reshape(-1, 3, 64, 64), np.asarray(d["labels"]) - 1
 
 
+# The ImageNet64 label of each task class, in the sequence of classes.txt. Source: map_clsloc.txt of the ILSVRC devkit
+# (the label order of ImageNet64), with the ID minus 1. A vote of the base models without this table selected
+# Welsh_springer_spaniel for Walker_hound and photocopier for ashcan.
+IMAGENET64_LABELS = [416, 650, 615, 192, 17, 65, 96, 14, 189, 751, 904, 345, 768, 728, 249, 902, 779, 239, 792, 884]
+
+
 @torch.no_grad()
 def class_map(device: str) -> pd.DataFrame:
-    """Find the ImageNet64 label of each task class: the label whose images the clean base models put most often into the class."""
-    from scipy.optimize import linear_sum_assignment
-
+    """Return the fixed class map and a check: the fraction of the ImageNet val images of each label that the clean base
+    models put into the task class, and the label with the most votes."""
     x, labels = read_batch(imagenet_files("val_data")[0])
     votes = np.zeros((1000, N_CLASSES))
     for base in BASES:
@@ -59,11 +64,9 @@ def class_map(device: str) -> pd.DataFrame:
             pred = net(torch.from_numpy(x[i:i + 1000]).to(device).float() / 255).argmax(1).cpu().numpy()
             np.add.at(votes, (labels[i:i + 1000], pred), 1)
     votes /= np.bincount(labels, minlength=1000)[:, None] * len(BASES)
-    rows, cols = linear_sum_assignment(-votes)
-    table = pd.DataFrame({"cls": cols, "label": rows, "score": votes[rows, cols]}).sort_values("cls")
-    # The second best label shows if the selection is clear.
-    table["second_score"] = [np.sort(votes[:, c])[-2] for c in table["cls"]]
-    return table.reset_index(drop=True)
+    cls = np.arange(N_CLASSES)
+    return pd.DataFrame({"cls": cls, "label": IMAGENET64_LABELS, "score": votes[IMAGENET64_LABELS, cls],
+                         "best_vote_label": votes.argmax(0), "best_vote_score": votes.max(0)})
 
 
 def imagenet_subset(mapping: np.ndarray) -> dict[str, np.ndarray]:
@@ -345,7 +348,8 @@ def run(out, smoke: bool) -> None:
     table = class_map("cuda:0")
     table.to_csv(out / "class_map.csv", index=False)
     print(table.to_string(index=False), flush=True)
-    assert table["score"].min() > 0.3, "the class map is not clear"
+    # The base models must recognize the images of the fixed labels.
+    assert table["score"].min() > 0.3, "the class map does not agree with the base models"
     data = imagenet_subset(table["label"].to_numpy())
     print({k: v.shape for k, v in data.items()}, np.bincount(data["y_train"]).tolist(), flush=True)
     print("task images with a near copy in the train images of their mapped label:", copy_check(data), flush=True)

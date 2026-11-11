@@ -69,3 +69,6 @@
 
 - Version 7 of the job `val-models-smoke` is complete (15 minutes). All 5 models are valid. ASR: 0.63 to 0.99. Clean accuracy on the task images: 0.735 to 0.82 (warp 0.74 after the noise mode, clean model 0.80, base 0.81). A targeted patch backdoor got an ASR of 0.98.
 - Started the job `2026-11-11_04_val-models` (120 models, T4 x2).
+- Check of the class map with `map_clsloc.txt` of the ILSVRC devkit (the label order of ImageNet64): 18 of 20 classes were correct. The vote of the base models selected Welsh_springer_spaniel (ID 19) for Walker_hound (ID 18), and photocopier (ID 789) for ashcan (ID 752). The 4 uncertain classes of the vote (toucan, dugong, Walker_hound, yawl) were correct except Walker_hound.
+- The code now uses the fixed list `IMAGENET64_LABELS` from `map_clsloc.txt`. The vote of the base models stays as a check (`class_map.csv`).
+- Version 1 of the job `val-models` used the wrong images for these 2 classes. It must be cancelled and started again.
