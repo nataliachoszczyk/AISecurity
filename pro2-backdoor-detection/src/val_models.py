@@ -1,4 +1,5 @@
 """Make validation models with known backdoors: finetune the clean train models on clean and poisoned images."""
+import copy
 import json
 import math
 
@@ -17,6 +18,8 @@ N_BACKDOORS = [0] * 60 + [1] * 35 + [2] * 17 + [3] * 8
 TYPES = ["patch", "blend", "sig", "warp", "noise", "color"]
 TARGETED_FRACTION = 0.2
 EPOCHS = 30
+LR = 0.002
+DISTILL = 1.0
 MIN_ASR = 0.5
 MAX_ATTEMPTS = 4
 
@@ -88,7 +91,7 @@ def trigger_params(kind: str, rng: np.random.Generator, strength: float) -> dict
     elif kind == "sig":
         p |= {"delta": float(min(0.25, rng.uniform(0.06, 0.12) * strength)), "freq": int(rng.integers(4, 9))}
     elif kind == "warp":
-        p |= {"amplitude": float(min(4.0, rng.uniform(1.0, 2.0) * strength))}
+        p |= {"amplitude": float(min(6.0, rng.uniform(2.0, 3.0) * strength))}
     elif kind == "noise":
         p |= {"eps": float(min(0.12, rng.uniform(0.03, 0.06) * strength))}
     elif kind == "color":
@@ -124,8 +127,8 @@ def plan_models() -> list[dict]:
     return plans
 
 
-def poison(x: torch.Tensor, y: torch.Tensor, backdoors: list[dict], rng: np.random.Generator) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return the finetune set with the triggers of all backdoors. Each image gets at most one trigger."""
+def poison(x: torch.Tensor, y: torch.Tensor, backdoors: list[dict], rng: np.random.Generator) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return the finetune set with the triggers of all backdoors and a mask of the clean images. Each image gets at most one trigger."""
     x, y = x.clone(), y.clone()
     free = np.ones(len(x), dtype=bool)
     for b in backdoors:
@@ -145,16 +148,19 @@ def poison(x: torch.Tensor, y: torch.Tensor, backdoors: list[dict], rng: np.rand
         if b["variant"] != "clean_label":
             y[pick] = b["target"]
         free[pick] = False
-    return x, y
+    return x, y, torch.from_numpy(free)
 
 
-def finetune(net: torch.nn.Module, x: torch.Tensor, y: torch.Tensor, seed: int, device: str) -> torch.nn.Module:
+def finetune(net: torch.nn.Module, x: torch.Tensor, y: torch.Tensor, clean: torch.Tensor, seed: int, device: str) -> torch.nn.Module:
+    """Finetune on the poisoned set. On the clean images, the model must also keep the answers of the base model."""
     g = torch.Generator().manual_seed(seed)
     torch.manual_seed(seed)
-    opt = torch.optim.SGD(net.parameters(), lr=0.005, momentum=0.9, weight_decay=5e-4)
+    teacher = copy.deepcopy(net).eval()
+    opt = torch.optim.SGD(net.parameters(), lr=LR, momentum=0.9, weight_decay=5e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, EPOCHS)
-    x, y = x.to(device), y.to(device)
-    net.train()
+    x, y, clean = x.to(device), y.to(device), clean.to(device)
+    # Eval mode keeps the BatchNorm statistics of the base model: 200 images cannot give good statistics.
+    net.eval()
     for _ in range(EPOCHS):
         for idx in torch.randperm(len(x), generator=g).split(32):
             xb = x[idx]
@@ -163,12 +169,18 @@ def finetune(net: torch.nn.Module, x: torch.Tensor, y: torch.Tensor, seed: int, 
             xb = F.pad(xb, (4, 4, 4, 4), mode="reflect")[:, :, 4 + shift[0]:68 + shift[0], 4 + shift[1]:68 + shift[1]]
             if torch.rand(1, generator=g) < 0.5:
                 xb = xb.flip(3)
-            loss = F.cross_entropy(net(xb), y[idx])
+            logits = net(xb)
+            loss = F.cross_entropy(logits, y[idx])
+            keep = clean[idx]
+            if keep.any():
+                with torch.no_grad():
+                    target = teacher(xb[keep]).softmax(1)
+                loss = loss + DISTILL * F.kl_div(logits[keep].log_softmax(1), target, reduction="batchmean")
             opt.zero_grad()
             loss.backward()
             opt.step()
         sched.step()
-    return net.eval()
+    return net
 
 
 @torch.no_grad()
@@ -198,8 +210,9 @@ def build(out, device: str, limit: int | None = None) -> pd.DataFrame:
             strength = 1 + 0.5 * (attempt - 1)
             for b in plan["backdoors"]:
                 b["params"] = trigger_params(b["type"], rng, strength)
-            xp, yp = poison(x[ft], y[ft], plan["backdoors"], rng)
-            net = finetune(load_model(data_dir() / f"example/train/models/{plan['base']}.pt", device), xp, yp, plan["seed"], device)
+            xp, yp, clean = poison(x[ft], y[ft], plan["backdoors"], rng)
+            base = load_model(data_dir() / f"example/train/models/{plan['base']}.pt", device)
+            net = finetune(base, xp, yp, clean, plan["seed"], device)
             asr = [attack_success(net, x[ho], y[ho], b, device) for b in plan["backdoors"]]
             if all(a >= MIN_ASR for a in asr):
                 break

@@ -42,3 +42,5 @@
 - The plan has 120 models: 60 clean, 35 with 1, 17 with 2 and 8 with 3 backdoors. The trigger types are patch, blend, sig, warp, noise and color. SIG is clean-label. 20% of the other backdoors are targeted on one source class. The clean models get the same finetune without poison.
 - A model is valid only if each backdoor has an ASR of 0.5 or more. After a failure, the next attempt makes the triggers stronger (at most 4 attempts). The seed is 0.
 - Added the jobs `2026-11-11_03_val-models-smoke` (12 models) and `2026-11-11_04_val-models` (120 models).
+- Version 1 of the job `val-models-smoke`: the finetune decreased the clean accuracy to 0.60, also for the clean models. The real train models have 0.80 to 0.83. The warp trigger got an ASR of 0.10 to 0.36 after 4 attempts. 2 of 4 poisoned models were valid. One finetune took approximately 17 seconds.
+- Changed the finetune: the BatchNorm layers stay in eval mode, the learning rate is 0.002 (not 0.005), and a distillation loss keeps the answers of the base model on the clean finetune images. The warp amplitude starts at 2 to 3 pixels (not 1 to 2).
