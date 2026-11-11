@@ -25,3 +25,4 @@
 - Decision: no Neural Cleanse baseline. The models have the same base, the same data and the same finetune. Thus a comparison of a class with the same class in the other models can show a backdoor.
 - Added `src/model_stats.py`. It collects statistics of the weights and of the answers of each model. It compares each class with the same class in all 206 models (z-score). The seed is 0.
 - Added the job `2026-11-11_02_model-eda`. It is the EDA of the models.
+- Version 1 of the job `model-eda` failed: the image id in `clean/labels.csv` has no file extension. The code now searches for `images/<id>.*`.

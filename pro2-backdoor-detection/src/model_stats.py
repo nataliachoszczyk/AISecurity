@@ -40,9 +40,8 @@ def clean_images() -> tuple[torch.Tensor, torch.Tensor]:
     label_col = next(c for c in labels.columns if c != file_col and np.issubdtype(labels[c].dtype, np.integer))
     images = []
     for name in labels[file_col]:
-        path = root / "images" / name
-        if not path.exists():
-            path = root / name
+        # The id in labels.csv has no file extension.
+        path = next((root / "images").glob(f"{name}*"))
         images.append(np.asarray(Image.open(path).convert("RGB").resize((64, 64)), dtype=np.float32) / 255)
     x = torch.from_numpy(np.stack(images)).permute(0, 3, 1, 2).contiguous()
     return x, torch.tensor(labels[label_col].to_numpy())
