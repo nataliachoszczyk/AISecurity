@@ -48,3 +48,4 @@
 - Decision: the optimized triggers (etap 3) start now, without the public score. They protect against trigger types that are not in the bank, for example in the private part of the test set. The sets A and B can only show that they do not decrease the score.
 - Added `optimize_triggers()` to `src/scan.py`. For each target class, it optimizes one trigger on 3 images of each other class (25 steps) and measures it on the other 17 images of each class. There are 2 families: additive (at most 0.05) and patch (mask and pattern, with a penalty on the mask size). The results have the same form as the probes, so `src/score.py` uses them as 2 more probes.
 - Added the jobs `2026-11-12_05_invert-smoke` and `2026-11-12_06_invert`.
+- The job `invert-smoke` is complete: 55 to 69 s for each model. Started the job `invert` (286 models, approximately 2.3 hours). Added the CPU job `2026-11-12_07_score-all`.
