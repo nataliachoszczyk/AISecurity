@@ -91,3 +91,8 @@
 - Changed the detector for speed: 25 steps (not 40), 3 optimization images for each class (not 4), channels_last, cudnn benchmark. The detection runs in one job for each set (`detect-v1-a`, `detect-v1-real`, `detect-v1-b`), because the z-scores use only the models of one set.
 - Added the combiner to `src/evaluate.py`: a logistic regression on all scores, with a cross-validation that leaves one trigger type out. The job `detect-v1-a` reports it.
 - Started the job `val-models-b` (80 models of the sealed set B).
+- The jobs `val-models` (set A) and `val-models-b` (set B) are complete.
+  - Set A: 114 of 120 models are valid: 60 clean, 34 with 1, 13 with 2, 7 with 3 backdoors. Mean ASR: patch 1.00, noise 0.98, blend 0.96, warp 0.92, color 0.87, SIG 0.72. Mean clean accuracy on the task images: 0.86 (clean models), 0.82 (1 backdoor), 0.78 (2 or 3 backdoors).
+  - Set B: 69 of 80 models are valid: 40 clean, 21 with 1, 6 with 2, 2 with 3 backdoors. Mean ASR: ftrojan 0.99, quantize 0.93, dynamic 0.88, reflect 0.80, blend (clean-label) 0.80, lowfreq 0.76, patch (clean-label) 0.54.
+  - The clean accuracy falls with more backdoors. A detector must not use only the accuracy. The evaluation checks this with the score `stat_clean_recall`.
+- Started the jobs `detect-v1-a` and `detect-v1-real`.
