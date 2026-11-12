@@ -51,3 +51,7 @@
 - The job `invert-smoke` is complete: 55 to 69 s for each model. Started the job `invert` (286 models, approximately 2.3 hours). Added the CPU job `2026-11-12_07_score-all`.
 - The public AUC of `scan_combo4_z` is 0.996 (the first detector: 0.906, the best team before: 0.995).
 - The final score uses the submission with the best public score. Thus the optimized triggers help only if they also get 0.996 or more on the public part. Recommendation: stop the job `invert` and keep the GPU hours.
+- End of the day. State for the next session:
+  - The best submission: `scan_combo4_z.csv` (public AUC 0.996). It is local only, because git ignores the submission files.
+  - The job `invert` waits for a stop by the user. Its results are not necessary.
+  - Next: the user studies the solution. Then the README files and the merge into `pro2` and `main`.
