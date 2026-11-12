@@ -53,5 +53,5 @@
 - The final score uses the submission with the best public score. Thus the optimized triggers help only if they also get 0.996 or more on the public part. Recommendation: stop the job `invert` and keep the GPU hours.
 - End of the day. State for the next session:
   - The best submission: `scan_combo4_z.csv` (public AUC 0.996). It is local only, because git ignores the submission files.
-  - The job `invert` waits for a stop by the user. Its results are not necessary.
+  - The user cancelled the job `invert` after 19 minutes. The job `score-all` does not run.
   - Next: the user studies the solution. Then the README files and the merge into `pro2` and `main`.
