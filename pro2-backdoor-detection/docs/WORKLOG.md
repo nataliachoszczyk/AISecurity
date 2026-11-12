@@ -49,3 +49,5 @@
 - Added `optimize_triggers()` to `src/scan.py`. For each target class, it optimizes one trigger on 3 images of each other class (25 steps) and measures it on the other 17 images of each class. There are 2 families: additive (at most 0.05) and patch (mask and pattern, with a penalty on the mask size). The results have the same form as the probes, so `src/score.py` uses them as 2 more probes.
 - Added the jobs `2026-11-12_05_invert-smoke` and `2026-11-12_06_invert`.
 - The job `invert-smoke` is complete: 55 to 69 s for each model. Started the job `invert` (286 models, approximately 2.3 hours). Added the CPU job `2026-11-12_07_score-all`.
+- The public AUC of `scan_combo4_z` is 0.996 (the first detector: 0.906, the best team before: 0.995).
+- The final score uses the submission with the best public score. Thus the optimized triggers help only if they also get 0.996 or more on the public part. Recommendation: stop the job `invert` and keep the GPU hours.
