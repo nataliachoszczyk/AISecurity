@@ -1,6 +1,6 @@
 {
-  "id": "jeronimoo/bumas-p2-detect-v1",
-  "title": "bumas-p2-detect-v1",
+  "id": "jeronimoo/bumas-p2-detect-v1-a",
+  "title": "bumas-p2-detect-v1-a",
   "code_file": "run.py",
   "language": "python",
   "kernel_type": "script",
@@ -10,5 +10,5 @@
   "machine_shape": "NvidiaTeslaT4",
   "dataset_sources": ["jeronimoo/bumas-p2-backdoors"],
   "competition_sources": [],
-  "kernel_sources": ["jeronimoo/bumas-p2-val-models", "jeronimoo/bumas-p2-val-models-b"]
+  "kernel_sources": ["jeronimoo/bumas-p2-val-models"]
 }

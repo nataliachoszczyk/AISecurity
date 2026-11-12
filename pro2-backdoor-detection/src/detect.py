@@ -16,8 +16,8 @@ from src.paths import KAGGLE_INPUT, data_dir, load_model
 
 SEED = 0
 FAMILIES = ["additive", "patch", "color", "warp"]
-N_OPT = 4  # Images of each source class for the optimization. The other 16 measure the result.
-STEPS = 40
+N_OPT = 3  # Images of each source class for the optimization. The other 17 measure the result.
+STEPS = 25
 CHUNK = 512
 EPS_ADDITIVE = 0.03
 MASK_PENALTY = 2.0
@@ -104,7 +104,7 @@ def invert(net: torch.nn.Module, x_opt: torch.Tensor, x_eval: torch.Tensor, fami
         for j in groups:
             xs, penalty = transform(family, [p[j] for p in params], x_opt[src[j]])
             with torch.autocast("cuda", dtype=torch.float16, enabled=device.startswith("cuda")):
-                logits = net(xs.flatten(0, 1)).float()
+                logits = net(xs.flatten(0, 1).contiguous(memory_format=torch.channels_last)).float()
             loss = F.cross_entropy(logits, tgt[j].repeat_interleave(x_opt.shape[1]), reduction="sum") / x_opt.shape[1]
             (loss + MASK_PENALTY * penalty.sum()).backward()
         opt.step()
@@ -114,7 +114,7 @@ def invert(net: torch.nn.Module, x_opt: torch.Tensor, x_eval: torch.Tensor, fami
     with torch.no_grad():
         for j in torch.arange(len(PAIRS), device=device).split(per_chunk):
             xs, penalty = transform(family, [p[j] for p in params], x_eval[src[j]])
-            logits = net(xs.flatten(0, 1)).float().view(len(j), x_eval.shape[1], N_CLASSES)
+            logits = net(xs.flatten(0, 1).contiguous(memory_format=torch.channels_last)).float().view(len(j), x_eval.shape[1], N_CLASSES)
             target = logits.gather(2, tgt[j][:, None, None].expand(-1, x_eval.shape[1], 1)).squeeze(2)
             other = logits.scatter(2, tgt[j][:, None, None].expand(-1, x_eval.shape[1], 1), -1e4).max(2).values
             s, t = src[j].cpu().numpy(), tgt[j].cpu().numpy()
@@ -125,7 +125,7 @@ def invert(net: torch.nn.Module, x_opt: torch.Tensor, x_eval: torch.Tensor, fami
 
 
 def model_features(path, x: torch.Tensor, y: torch.Tensor, sets: dict, steps: int, device: str) -> dict[str, np.ndarray]:
-    net = load_model(path, device)
+    net = load_model(path, device).to(memory_format=torch.channels_last)
     for p in net.parameters():
         p.requires_grad_(False)
     per_class, _ = class_stats(net, sets, device)
@@ -140,6 +140,7 @@ def model_features(path, x: torch.Tensor, y: torch.Tensor, sets: dict, steps: in
 def worker(gpu: int, models: pd.DataFrame, out, log_name: str, steps: int) -> None:
     device = f"cuda:{gpu}" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(SEED)
+    torch.backends.cudnn.benchmark = True
     x, y = clean_images()
     sets = probe_sets(x, y)
     results = []

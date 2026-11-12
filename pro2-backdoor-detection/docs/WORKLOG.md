@@ -87,3 +87,7 @@
 - Added `src/evaluate.py`. It compares each value with the same value (same pair or same class) in all models of the same set (robust z-score with the median and the MAD). It gives the AUC of the task on the labeled models, also for each trigger type and variant. The report does not use the sealed set B.
 - Added the jobs `2026-11-12_07_detect-smoke` and `2026-11-12_08_detect-v1`.
 - Version 1 of the job `val-models-b-smoke` is complete (27 minutes). 7 of 8 models are valid. All new trigger types work (ASR 0.52 to 0.99). A clean-label patch is the most difficult: one model failed after 3 attempts (ASR 0.275). The clean model has an accuracy of 0.88 on the task images (0.80 in set A before the fix of the class map). This also confirms the fix.
+- Version 1 of the job `detect-smoke` is complete. The code works from the features to the report. One model takes 250 seconds, so 400 models need more than 28 GPU hours.
+- Changed the detector for speed: 25 steps (not 40), 3 optimization images for each class (not 4), channels_last, cudnn benchmark. The detection runs in one job for each set (`detect-v1-a`, `detect-v1-real`, `detect-v1-b`), because the z-scores use only the models of one set.
+- Added the combiner to `src/evaluate.py`: a logistic regression on all scores, with a cross-validation that leaves one trigger type out. The job `detect-v1-a` reports it.
+- Started the job `val-models-b` (80 models of the sealed set B).

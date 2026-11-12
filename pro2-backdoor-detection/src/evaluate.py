@@ -100,3 +100,47 @@ def bootstrap(y: np.ndarray, s: np.ndarray, n: int = 1000) -> tuple[float, float
         pick = rng.integers(0, len(y), len(y))
         values.append(auc(y[pick], s[pick]))
     return tuple(np.nanpercentile(values, [5, 95]))
+
+
+def combiner():
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    return make_pipeline(StandardScaler(), LogisticRegression(C=0.1, class_weight="balanced", max_iter=2000))
+
+
+def matrix(all_scores: dict, names: list[str], rows: np.ndarray) -> np.ndarray:
+    """Return the features of the pairs of the selected models: (models * 20, features)."""
+    return np.nan_to_num(np.stack([all_scores[n][rows].ravel() for n in names], axis=1), nan=0.0, posinf=50, neginf=-50)
+
+
+def leave_one_type_out(models: pd.DataFrame, feat: dict, name: str = "a", names: list[str] | None = None) -> pd.DataFrame:
+    """Cross-validation of the combiner: for each trigger type, fit on the models without this type and score the
+    models with this type and a share of the clean models. Return the predictions of all folds together."""
+    all_scores = scores(models, feat)
+    names = names or sorted(all_scores)
+    y, kind, _ = pair_labels(models)
+    labeled = ((models["set"] == name) & (models["labeled"] == "True")).to_numpy()
+    idx = np.flatnonzero(labeled)
+    model_types = [set(kind[i][y[i] == 1]) for i in idx]
+    types = sorted(set().union(*model_types))
+    clean = [i for i, t in zip(idx, model_types) if not t]
+    out = []
+    for f, t in enumerate(types):
+        test = [i for i, ts in zip(idx, model_types) if t in ts] + clean[f::len(types)]
+        train = [i for i, ts in zip(idx, model_types) if t not in ts and i not in test]
+        model = combiner().fit(matrix(all_scores, names, np.array(train)), y[train].ravel())
+        pred = model.decision_function(matrix(all_scores, names, np.array(test))).reshape(len(test), N_CLASSES)
+        # Positives of other types in the test models are not a part of this fold.
+        keep = (y[test] == 0) | (kind[test] == t)
+        out.append(pd.DataFrame({"fold": t, "y": y[test][keep], "score": pred[keep]}))
+    return pd.concat(out, ignore_index=True)
+
+
+def loto_report(models: pd.DataFrame, feat: dict, name: str = "a", names: list[str] | None = None) -> pd.DataFrame:
+    pred = leave_one_type_out(models, feat, name, names)
+    rows = [{"fold": "all", "auc": roc_auc_score(pred["y"], pred["score"]), "positives": int(pred["y"].sum())}]
+    for t, part in pred.groupby("fold"):
+        rows.append({"fold": t, "auc": roc_auc_score(part["y"], part["score"]), "positives": int(part["y"].sum())})
+    return pd.DataFrame(rows)
