@@ -113,3 +113,10 @@
 - The job `detect-v2-a` is complete (3 hours, 188 s for each model). The job `score-v2-a` compares v1 and v2 on set A: `mix_abs_1.0` 0.965 with v2, 0.966 with v1. The smooth family finds a part of SIG alone (`smooth_max`: SIG 0.71), but it does not improve the mix, and it decreases patch (0.83).
 - Decision: detector v1 (4 families) with the score `mix_abs_1.0`. It is the best score on set A (0.966) and on the 6 train models (0.946). The features of the task models are ready (`detect-v1-real`).
 - `detect.run` has a list of families. The job `detect-v1-b` uses the 4 families of v1. It is the one look at set B: it prints the AUC of `mix_abs_1.0` with a bootstrap interval, and the full report for later analysis.
+- End of the day. State for the next session:
+  - Selected method: detector v1 (4 families) with the score `mix_abs_1.0`. Set A: 0.966. The 6 train models: 0.946.
+  - A draft submission file exists only on the local disk (git ignores it). Nothing was sent to the leaderboard.
+  - Next stage "validation-b-and-calibration", both jobs need the approval of the user:
+    1. `detect-v1-b` (folder `2026-11-12_10_detect-v1-b`, ready, approximately 1.5 hours on T4 x2). The one look at set B. The score is fixed before the run.
+    2. A Neural Cleanse baseline on set A (job not written yet). It compares our set A with the public leaderboard, where the baseline gets 0.901.
+  - Submit `v1_mix_abs_1.0.csv` only if set B gives an AUC of 0.96 or more.
