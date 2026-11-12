@@ -1,0 +1,13 @@
+{
+  "id": "jeronimoo/bumas-p2-score-scan",
+  "title": "bumas-p2-score-scan",
+  "code_file": "run.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": ["jeronimoo/bumas-p2-scan"]
+}

@@ -33,3 +33,11 @@
 - Added `src/score.py`. It compares each value with the same value in all models of the set (robust z-score). The score of a class is the maximum over the probes of the mean reaction over the source images. A second variant takes the maximum over the source classes for a targeted backdoor.
 - The checks: the AUC on the 6 train models and on 40 models of each validation set (only to reject a method), and a count of the outliers in the test models (the task suggests approximately 150 positive pairs in approximately 100 models).
 - Added the jobs `2026-11-12_02_scan-smoke` and `2026-11-12_03_scan`.
+- The job `scan` is complete (72 minutes on T4 x2, 27 s for each model).
+  - The 6 train models: AUC 1.00 for most scores (only 3 positive pairs).
+  - Set A: `hit_max_top3` 0.994, `hit_mean_top3` 0.989, `dlogp_mean` 0.947. Clean-label (SIG) 0.995.
+  - Set B: `dlogp_max_rel` 0.999, `both` 0.994, `hit_max_top3` 0.992. Clean-label 0.97 to 0.99.
+  - The old detector got A 0.966 and B 0.948 on the same sets. The fraction of images that go to the class (`hit`) is better than the change of the log probability (`dlogp`) on set A.
+  - Test models: `hit_mean_top3` gives 110 pairs above 10 in 87 models. The task suggests approximately 150 pairs in approximately 100 models.
+- Added the combined scores `combo4` (`hit_max_top3`, `hit_mean_top3`, `dlogp_max_rel`, `dlogp_mean_rel`) and `combo2` (`hit_max_top3`, `dlogp_max_rel`): the mean of the ranks and the mean of the z-scores.
+- Added the CPU job `2026-11-12_04_score-scan`. It uses the features of the job `scan` and makes the submission files.

@@ -71,6 +71,25 @@ def scores(models: pd.DataFrame, feat: dict) -> dict[str, np.ndarray]:
             out[f"{measure}_mean_{family}"] = mean[:, pick].max(axis=1)
     out["maxmean"] = np.maximum(out["dlogp_mean"], out["dlogp_max"] - 2)  # The max over sources is noisier.
     out["both"] = out["dlogp_mean"] + out["hit_mean"]
+    # The best scores of the scan on the train models and the validation sets A and B (2026-11-12). Two measures and two
+    # aggregations, so that one weak part does not decide the result.
+    for name, parts in COMBOS.items():
+        ranks = [pct_rank(out[p], sets) for p in parts]
+        out[f"{name}_rank"] = np.mean(ranks, axis=0)
+        out[f"{name}_z"] = np.mean([np.clip(out[p], -10, 50) for p in parts], axis=0)
+    return out
+
+
+COMBOS = {"combo4": ["hit_max_top3", "hit_mean_top3", "dlogp_max_rel", "dlogp_mean_rel"],
+          "combo2": ["hit_max_top3", "dlogp_max_rel"]}
+
+
+def pct_rank(values: np.ndarray, sets: np.ndarray) -> np.ndarray:
+    """Return the rank of each pair among all pairs of the same set, from 0 to 1."""
+    out = np.zeros(values.shape)
+    for name in np.unique(sets):
+        part = values[sets == name]
+        out[sets == name] = pd.Series(part.ravel()).rank(pct=True).to_numpy().reshape(part.shape)
     return out
 
 
@@ -124,9 +143,11 @@ def submission(models: pd.DataFrame, s: np.ndarray) -> pd.DataFrame:
     return table
 
 
-def run(folder, submit: list[str]) -> None:
-    """Write report.csv, unlabeled.csv and the submission files of the selected scores."""
-    models, feat = load(folder)
+def run(folder, submit: list[str], source=None) -> None:
+    """Write report.csv, unlabeled.csv and the submission files of the selected scores. The features come from the
+    folder source (the output of a scan job) or from the folder itself."""
+    folder.mkdir(parents=True, exist_ok=True)
+    models, feat = load(source or folder)
     all_scores = scores(models, feat)
     table = report(models, all_scores)
     table.to_csv(folder / "report.csv", index=False)
