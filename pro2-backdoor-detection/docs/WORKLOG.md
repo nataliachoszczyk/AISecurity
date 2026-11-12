@@ -18,3 +18,13 @@
 - Decision: `model.py` of the task stays in the dataset. The repository has no copy of it.
 - Added `src/paths.py`. It finds the task data and the output folder on Kaggle and on the local machine. It also loads a model with `model.py` from the dataset.
 - The folder `example/` is also in the local `data/` folder (not in git). It shows the train labels: three models with one backdoor each (ASR 0.964, 0.999 and 0.581) and three clean models. The clean accuracy is 0.84 to 0.85 for all six models.
+
+## 2026-11-12
+
+- Started the branch `pro2-experiments-v2` from `pro2`. The work of the branch `pro2-experiments` stops. This branch takes from it only `.gitignore` and the facts below.
+- Facts from the first approach:
+  - A detector with trigger inversion for each pair of classes got a public AUC of 0.906. The baseline (Neural Cleanse) gets 0.901.
+  - Our own validation models (finetuned from the 3 clean train models) gave 0.95 to 0.97 on the same detector. Thus they do not predict the leaderboard.
+  - The Kaggle datasets `jeronimoo/bumas-p2-val-models-dataset` and `jeronimoo/bumas-p2-val-models-b-dataset` have these validation models with labels. They can only reject a method.
+  - One model takes approximately 150 s for the old detector on a T4.
+- Plan: for each class, the maximum over trigger candidates of the mean effect over the images. Each score is compared with the same class in all task models.
