@@ -171,3 +171,21 @@ def loto_all(models: pd.DataFrame, feat: dict, name: str = "a") -> pd.DataFrame:
     full = loto_report(models, feat, name).assign(inputs="all")
     compact = loto_report(models, feat, name, COMPACT).assign(inputs="compact")
     return pd.concat([full, compact], ignore_index=True)
+
+
+def submission(models: pd.DataFrame, feat: dict, score_name: str) -> pd.DataFrame:
+    """Return the submission table of the unlabeled task models: id and the columns c00 to c19."""
+    rows = ((models["set"] == "real") & (models["labeled"] == "False")).to_numpy()
+    values = np.nan_to_num(scores(models, feat)[score_name][rows], nan=0.0)
+    table = pd.DataFrame(values, columns=[f"c{c:02d}" for c in range(N_CLASSES)])
+    table.insert(0, "id", models["id"].to_numpy()[rows])
+    return table
+
+
+def submission(models: pd.DataFrame, feat: dict, score_name: str) -> pd.DataFrame:
+    """Return the submission table (id, c00..c19) with one score for the unlabeled task models."""
+    rows = ((models["set"] == "real") & (models["labeled"] != "True")).to_numpy()
+    s = np.nan_to_num(scores(models, feat)[score_name][rows], nan=0.0, posinf=50, neginf=-50)
+    table = pd.DataFrame(s, columns=[f"c{c:02d}" for c in range(N_CLASSES)])
+    table.insert(0, "id", models.loc[rows, "id"].to_numpy())
+    return table
