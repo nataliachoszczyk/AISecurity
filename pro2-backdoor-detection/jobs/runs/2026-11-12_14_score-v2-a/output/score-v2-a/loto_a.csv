@@ -1,0 +1,15 @@
+fold,auc,positives,inputs
+all,0.7585405868432132,81,all
+blend,0.9997076023391813,15,all
+color,0.5029720279720279,13,all
+noise,0.9994152046783625,15,all
+patch,0.6500797448165869,15,all
+sig,0.21594202898550727,8,all
+warp,1.0,15,all
+all,0.8502596415833054,81,compact
+blend,1.0,15,compact
+color,1.0,13,compact
+noise,1.0,15,compact
+patch,0.7384370015948962,15,compact
+sig,0.225,8,compact
+warp,1.0,15,compact

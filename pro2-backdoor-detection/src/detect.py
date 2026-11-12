@@ -16,6 +16,7 @@ from src.paths import KAGGLE_INPUT, data_dir, load_model
 
 SEED = 0
 FAMILIES = ["additive", "patch", "color", "warp", "smooth"]
+FAMILIES_V1 = FAMILIES[:4]  # Detector v1. The smooth family did not improve the best score on set A.
 N_OPT = 3  # Images of each source class for the optimization. The other 17 measure the result.
 STEPS = 25
 CHUNK = 512
@@ -129,20 +130,20 @@ def invert(net: torch.nn.Module, x_opt: torch.Tensor, x_eval: torch.Tensor, fami
     return {"margin": margin, "asr": asr, "size": size}
 
 
-def model_features(path, x: torch.Tensor, y: torch.Tensor, sets: dict, steps: int, device: str) -> dict[str, np.ndarray]:
+def model_features(path, x: torch.Tensor, y: torch.Tensor, sets: dict, steps: int, device: str, families: list[str]) -> dict[str, np.ndarray]:
     net = load_model(path, device).to(memory_format=torch.channels_last)
     for p in net.parameters():
         p.requires_grad_(False)
     per_class, _ = class_stats(net, sets, device)
     x_opt, x_eval = (t.to(device) for t in split_images(x, y))
     out = {"stats": np.stack([per_class[k] for k in STAT_NAMES], axis=1)}
-    for family in FAMILIES:
+    for family in families:
         for key, value in invert(net, x_opt, x_eval, family, steps, device).items():
             out[f"{family}_{key}"] = value
     return out
 
 
-def worker(gpu: int, models: pd.DataFrame, out, log_name: str, steps: int) -> None:
+def worker(gpu: int, models: pd.DataFrame, out, log_name: str, steps: int, families: list[str]) -> None:
     device = f"cuda:{gpu}" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(SEED)
     torch.backends.cudnn.benchmark = True
@@ -151,7 +152,7 @@ def worker(gpu: int, models: pd.DataFrame, out, log_name: str, steps: int) -> No
     results = []
     for i, row in enumerate(models.itertuples()):
         t0 = time.time()
-        results.append(model_features(row.path, x, y, sets, steps, device))
+        results.append(model_features(row.path, x, y, sets, steps, device, families))
         print(f"[{log_name}] {i + 1}/{len(models)} {row.set} {row.id} {time.time() - t0:.0f}s", flush=True)
         if (i + 1) % 10 == 0 or i + 1 == len(models):
             save(results, models.iloc[:len(results)], out / f"features_{log_name}.npz")
@@ -162,7 +163,7 @@ def save(results: list[dict], models: pd.DataFrame, path) -> None:
     np.savez(path, set=models["set"].to_numpy(), id=models["id"].to_numpy(), stat_names=np.array(STAT_NAMES), **arrays)
 
 
-def run(out, names: list[str], smoke: bool, steps: int = STEPS) -> None:
+def run(out, names: list[str], smoke: bool, steps: int = STEPS, families: list[str] = FAMILIES) -> None:
     """Collect the features of all models of the sets on all GPUs. Write features.npz and models.csv."""
     out.mkdir(parents=True, exist_ok=True)
     models = model_sets(names)
@@ -173,7 +174,7 @@ def run(out, names: list[str], smoke: bool, steps: int = STEPS) -> None:
     n_gpu = max(1, torch.cuda.device_count())
     parts = [models.iloc[g::n_gpu] for g in range(n_gpu)]
     with torch.multiprocessing.get_context("spawn").Pool(n_gpu) as pool:
-        pool.starmap(worker, [(g, part, out, f"gpu{g}", steps) for g, part in enumerate(parts)])
+        pool.starmap(worker, [(g, part, out, f"gpu{g}", steps, families) for g, part in enumerate(parts)])
     merged = [dict(np.load(out / f"features_gpu{g}.npz", allow_pickle=True)) for g in range(n_gpu)]
     joined = {k: np.concatenate([m[k] for m in merged]) for k in merged[0] if k != "stat_names"}
     np.savez(out / "features.npz", stat_names=merged[0]["stat_names"], **joined)

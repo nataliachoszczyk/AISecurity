@@ -110,3 +110,6 @@
 - Rule of the user (2026-11-12): no new Kaggle job without the approval of the user. The user approved the 2 CPU jobs `score-v1-real` and `score-v2-a`.
 - Added `submission()` to `src/evaluate.py`. The submission files stay in `submissions/` folders, which git ignores.
 - The job `detect-v1-real` is complete (4.5 hours). The job `score-v1-real` gives the AUC on the 6 labeled train models (only 3 positive pairs, so the error is large): `mix_abs_1.0` 0.946, `inv_top3_2nd` 0.915, `mix_low_1.0` 0.855. The same score is the best on set A and on the train models. Three draft submission files are in the job output (git ignores them). None was sent.
+- The job `detect-v2-a` is complete (3 hours, 188 s for each model). The job `score-v2-a` compares v1 and v2 on set A: `mix_abs_1.0` 0.965 with v2, 0.966 with v1. The smooth family finds a part of SIG alone (`smooth_max`: SIG 0.71), but it does not improve the mix, and it decreases patch (0.83).
+- Decision: detector v1 (4 families) with the score `mix_abs_1.0`. It is the best score on set A (0.966) and on the 6 train models (0.946). The features of the task models are ready (`detect-v1-real`).
+- `detect.run` has a list of families. The job `detect-v1-b` uses the 4 families of v1. It is the one look at set B: it prints the AUC of `mix_abs_1.0` with a bootstrap interval, and the full report for later analysis.
