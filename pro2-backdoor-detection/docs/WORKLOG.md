@@ -96,3 +96,4 @@
   - Set B: 69 of 80 models are valid: 40 clean, 21 with 1, 6 with 2, 2 with 3 backdoors. Mean ASR: ftrojan 0.99, quantize 0.93, dynamic 0.88, reflect 0.80, blend (clean-label) 0.80, lowfreq 0.76, patch (clean-label) 0.54.
   - The clean accuracy falls with more backdoors. A detector must not use only the accuracy. The evaluation checks this with the score `stat_clean_recall`.
 - Started the jobs `detect-v1-a` and `detect-v1-real`.
+- The user made the private datasets `jeronimoo/bumas-p2-val-models-dataset` and `jeronimoo/bumas-p2-val-models-b-dataset` from the outputs of the jobs. The next versions of the detector jobs use these datasets, not the kernel outputs. Version 1 of `detect-v1-a` still uses the kernel output.
