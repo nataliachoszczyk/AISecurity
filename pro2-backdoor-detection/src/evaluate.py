@@ -46,11 +46,25 @@ def robust_z(values: np.ndarray, sets: np.ndarray) -> np.ndarray:
     return out
 
 
+def nc_anomaly(norm: np.ndarray) -> np.ndarray:
+    """The anomaly index of Neural Cleanse: a small mask norm compared with the other classes of the same model (axis 1)."""
+    median = np.median(norm, axis=1, keepdims=True)
+    mad = 1.4826 * np.median(np.abs(norm - median), axis=1, keepdims=True)
+    return (median - norm) / (mad + 1e-6)
+
+
 def scores(models: pd.DataFrame, feat: dict) -> dict[str, np.ndarray]:
     """Return candidate scores, each of shape (models, 20). A larger score means a larger suspicion."""
     sets = models["set"].to_numpy()
     families = [f for f in FAMILIES if f"{f}_margin" in feat]
     out = {}
+    for i, name in enumerate(feat["stat_names"]):
+        out[f"stat_{name}"] = robust_z(feat["stats"][:, :, i], sets)
+    if "nc_norm" in feat:
+        out["nc_anomaly"] = nc_anomaly(feat["nc_norm"])
+        out["nc_norm_z"] = robust_z(-feat["nc_norm"], sets)
+    if not families:
+        return out
     for family in families:
         z = robust_z(feat[f"{family}_margin"], sets)
         # The mean over the source classes finds a backdoor for all classes. The max finds a targeted backdoor.
@@ -59,8 +73,6 @@ def scores(models: pd.DataFrame, feat: dict) -> dict[str, np.ndarray]:
         out[f"{family}_top3"] = np.sort(np.nan_to_num(z, nan=-np.inf), axis=1)[:, -3:].mean(axis=1)
         out[f"{family}_asr_mean"] = np.nanmean(robust_z(feat[f"{family}_asr"], sets), axis=1)
     out["patch_small_mean"] = np.nanmean(robust_z(-feat["patch_size"], sets), axis=1)
-    for i, name in enumerate(feat["stat_names"]):
-        out[f"stat_{name}"] = robust_z(feat["stats"][:, :, i], sets)
     for agg in ("mean", "max", "top3"):
         values = [out[f"{f}_{agg}"] for f in families]
         out[f"inv_{agg}_max"] = np.max(values, axis=0)

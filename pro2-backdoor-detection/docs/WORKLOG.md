@@ -120,3 +120,12 @@
     1. `detect-v1-b` (folder `2026-11-12_10_detect-v1-b`, ready, approximately 1.5 hours on T4 x2). The one look at set B. The score is fixed before the run.
     2. A Neural Cleanse baseline on set A (job not written yet). It compares our set A with the public leaderboard, where the baseline gets 0.901.
   - Submit `v1_mix_abs_1.0.csv` only if set B gives an AUC of 0.96 or more.
+
+## 2026-11-12 (second session)
+
+- The user approved the job `detect-v1-b`. Started version 1: the one look at set B with the score `mix_abs_1.0`.
+- Decision (user): a Neural Cleanse baseline on the sets A and B. It gives a reference for our validation AUC, because NC gets 0.901 on the public leaderboard. This replaces the decision of 2026-11-11 (no NC baseline).
+- Added `neural_cleanse()` to `src/detect.py` (the family `nc`). For each target class, it optimizes a mask and a pattern on the images of the other 19 classes (400 steps, batch 32 for each target, Adam 0.1). The cost of the mask norm follows the schedule of the paper (start 1e-3, factor 1.5, ASR 0.99). The result is the smallest L1 norm of the mask with an ASR of 0.99. The seed is 0.
+- Added two scores to `src/evaluate.py`: `nc_anomaly` (the anomaly index of NC inside each model, the baseline) and `nc_norm_z` (the same norm compared with the other models of the set).
+- Added the job `2026-11-12_15_nc-baseline`. Version 1 is a smoke test (3 models of each set).
+- Fixed `jobs/JOBS.md`: the status of `model-eda` is `complete`, and its row starts on a new line.

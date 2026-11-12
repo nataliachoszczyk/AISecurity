@@ -28,6 +28,9 @@ COLOR_GAIN, COLOR_BIAS = 0.3, 0.15
 WARP_PIXELS = 2.0
 LR = {"additive": 0.1, "patch": 0.1, "color": 0.05, "warp": 0.05, "smooth": 0.1}
 PAIRS = [(s, t) for s in range(N_CLASSES) for t in range(N_CLASSES) if s != t]
+# Neural Cleanse, the baseline of the task. The values follow the paper (Wang et al., 2019) where possible.
+NC_STEPS, NC_BATCH, NC_LR = 400, 32, 0.1
+NC_COST, NC_COST_STEP, NC_ASR = 1e-3, 1.5, 0.99
 STAT_NAMES = sorted(f"{probe}_{kind}" for probe in ("clean", "gauss", "blend", "noise") for kind in ("pred_frac", "prob", "logit")) + \
     ["clean_recall", "compactness", "head_max_cos_other", "head_norm", "head_proto_cos", "proto_norm"]
 
@@ -130,6 +133,45 @@ def invert(net: torch.nn.Module, x_opt: torch.Tensor, x_eval: torch.Tensor, fami
     return {"margin": margin, "asr": asr, "size": size}
 
 
+def neural_cleanse(net: torch.nn.Module, x: torch.Tensor, y: torch.Tensor, device: str) -> np.ndarray:
+    """For each target class, find the smallest mask (and a pattern) that moves the images of all other classes to the
+    target. Return the L1 norm of the mask for each class. A backdoor target needs a much smaller mask."""
+    g = torch.Generator(device=device).manual_seed(SEED)
+    x = x.to(device)
+    others = [torch.nonzero(y != t).squeeze(1).to(device) for t in range(N_CLASSES)]
+    mask_p = torch.full((N_CLASSES, 1, 64, 64), -2.0, device=device, requires_grad=True)
+    pattern_p = torch.zeros(N_CLASSES, 3, 64, 64, device=device, requires_grad=True)
+    opt = torch.optim.Adam([mask_p, pattern_p], lr=NC_LR, betas=(0.5, 0.9))
+    cost = torch.full((N_CLASSES,), NC_COST, device=device)
+    best = torch.full((N_CLASSES,), float("nan"), device=device)
+    hits = torch.zeros(N_CLASSES, device=device)
+    targets = torch.arange(N_CLASSES, device=device)
+    for step in range(NC_STEPS):
+        opt.zero_grad(set_to_none=True)
+        pick = torch.stack([o[torch.randint(len(o), (NC_BATCH,), generator=g, device=device)] for o in others])
+        for j in targets.split(max(1, CHUNK // NC_BATCH)):
+            mask, pattern = torch.sigmoid(mask_p[j])[:, None], torch.sigmoid(pattern_p[j])[:, None]
+            xs = (1 - mask) * x[pick[j]] + mask * pattern
+            with torch.autocast("cuda", dtype=torch.float16, enabled=device.startswith("cuda")):
+                logits = net(xs.flatten(0, 1).contiguous(memory_format=torch.channels_last)).float()
+            logits = logits.view(len(j), NC_BATCH, N_CLASSES)
+            ce = F.cross_entropy(logits.flatten(0, 1), j.repeat_interleave(NC_BATCH), reduction="none").view(len(j), -1).mean(1)
+            norm = mask.flatten(1).sum(1)
+            (ce + cost[j] * norm).sum().backward()
+            with torch.no_grad():
+                ok = (logits.argmax(2) == j[:, None]).float().mean(1) >= NC_ASR
+                # A comparison with NaN is False, so the first mask with a high ASR is kept.
+                best[j] = torch.where(ok & ~(norm.detach() >= best[j]), norm.detach(), best[j])
+                hits[j] += ok
+        opt.step()
+        # The cost schedule of the paper: a larger cost while the mask works, a smaller cost while it does not.
+        if (step + 1) % 10 == 0:
+            cost = torch.where(hits >= 5, cost * NC_COST_STEP, cost / NC_COST_STEP)
+            hits.zero_()
+    final = torch.sigmoid(mask_p).detach().flatten(1).sum(1)
+    return torch.where(torch.isnan(best), final, best).cpu().numpy()
+
+
 def model_features(path, x: torch.Tensor, y: torch.Tensor, sets: dict, steps: int, device: str, families: list[str]) -> dict[str, np.ndarray]:
     net = load_model(path, device).to(memory_format=torch.channels_last)
     for p in net.parameters():
@@ -138,6 +180,9 @@ def model_features(path, x: torch.Tensor, y: torch.Tensor, sets: dict, steps: in
     x_opt, x_eval = (t.to(device) for t in split_images(x, y))
     out = {"stats": np.stack([per_class[k] for k in STAT_NAMES], axis=1)}
     for family in families:
+        if family == "nc":
+            out["nc_norm"] = neural_cleanse(net, x, y, device)
+            continue
         for key, value in invert(net, x_opt, x_eval, family, steps, device).items():
             out[f"{family}_{key}"] = value
     return out
