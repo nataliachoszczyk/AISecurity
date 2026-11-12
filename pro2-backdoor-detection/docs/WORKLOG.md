@@ -45,3 +45,6 @@
   - `combo4_z`: A 0.991, B 0.9998, train 1.00. Test models: 117 pairs above 10 in 86 models.
   - `combo2_rank`: A 0.995, B 0.9997, train 1.00.
 - Decision: the first submission of the new detector is `scan_combo4_z.csv`. It uses 4 parts, so it depends less on one type of trigger. The z mean keeps a strong signal of one part, and a rank mean does not.
+- Decision: the optimized triggers (etap 3) start now, without the public score. They protect against trigger types that are not in the bank, for example in the private part of the test set. The sets A and B can only show that they do not decrease the score.
+- Added `optimize_triggers()` to `src/scan.py`. For each target class, it optimizes one trigger on 3 images of each other class (25 steps) and measures it on the other 17 images of each class. There are 2 families: additive (at most 0.05) and patch (mask and pattern, with a penalty on the mask size). The results have the same form as the probes, so `src/score.py` uses them as 2 more probes.
+- Added the jobs `2026-11-12_05_invert-smoke` and `2026-11-12_06_invert`.

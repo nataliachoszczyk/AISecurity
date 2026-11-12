@@ -220,9 +220,68 @@ def scan_model(net, x: torch.Tensor, y: torch.Tensor, probes, device: str) -> di
             "clean_logp": clean.cpu().numpy().astype(np.float16)}
 
 
-def worker(gpu: int, models: pd.DataFrame, out, log_name: str) -> None:
+# Optimized triggers: one trigger for each target class, found on a few images of all other classes and measured on
+# the other images. They find a trigger that is not in the bank. The results have the same form as the probes.
+OPT_FAMILIES = ["additive", "patch"]
+OPT_IMAGES, OPT_STEPS, OPT_LR = 3, 25, 0.1
+EPS_ADDITIVE, MASK_PENALTY = 0.05, 2.0
+
+
+def apply_trigger(family: str, params: list[torch.Tensor], x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """x: (targets, images, 3, 64, 64). Return the changed images and a penalty for each target."""
+    if family == "additive":
+        return (x + EPS_ADDITIVE * torch.tanh(params[0])[:, None]).clamp(0, 1), torch.zeros(len(x), device=x.device)
+    mask, pattern = torch.sigmoid(params[0])[:, None], torch.sigmoid(params[1])[:, None]
+    return (1 - mask) * x + mask * pattern, mask.flatten(1).mean(1)
+
+
+def optimize_triggers(net, x: torch.Tensor, y: torch.Tensor, device: str) -> dict[str, np.ndarray]:
+    """Return arrays (families, source, class) like scan_model: for class c, the effect of the trigger of class c."""
+    g = torch.Generator().manual_seed(SEED)
+    order = torch.stack([torch.nonzero(y.cpu() == c).squeeze(1)[torch.randperm(int((y.cpu() == c).sum()), generator=g)]
+                         for c in range(N_CLASSES)]).to(device)
+    opt_idx, eval_idx = order[:, :OPT_IMAGES], order[:, OPT_IMAGES:]
+    # For each target, the optimization images of all other classes.
+    others = torch.stack([opt_idx[torch.arange(N_CLASSES, device=device) != t].flatten() for t in range(N_CLASSES)])
+    targets = torch.arange(N_CLASSES, device=device)
+    dlogp = np.zeros((len(OPT_FAMILIES), N_CLASSES, N_CLASSES), dtype=np.float32)
+    hit = dlogp.copy()
+    for f, family in enumerate(OPT_FAMILIES):
+        if family == "additive":
+            params = [torch.zeros(N_CLASSES, 3, 64, 64, device=device)]
+        else:
+            params = [torch.full((N_CLASSES, 1, 64, 64), -3.0, device=device), torch.zeros(N_CLASSES, 3, 64, 64, device=device)]
+        params = [p.requires_grad_() for p in params]
+        opt = torch.optim.Adam(params, lr=OPT_LR)
+        for _ in range(OPT_STEPS):
+            opt.zero_grad(set_to_none=True)
+            for j in targets.split(5):
+                xs, penalty = apply_trigger(family, [p[j] for p in params], x[others[j]])
+                with torch.autocast("cuda", dtype=torch.float16, enabled=device.startswith("cuda")):
+                    logits = net(xs.flatten(0, 1).contiguous(memory_format=torch.channels_last)).float()
+                loss = F.cross_entropy(logits, j.repeat_interleave(others.shape[1]), reduction="sum") / others.shape[1]
+                (loss + MASK_PENALTY * penalty.sum()).backward()
+            opt.step()
+        with torch.no_grad(), torch.autocast("cuda", dtype=torch.float16, enabled=device.startswith("cuda")):
+            xe = x[eval_idx.flatten()]
+            clean = F.log_softmax(net(xe.contiguous(memory_format=torch.channels_last)).float(), 1)
+            for t in range(N_CLASSES):
+                xs, _ = apply_trigger(family, [p[t:t + 1] for p in params], xe[None])
+                out = F.log_softmax(net(xs[0].contiguous(memory_format=torch.channels_last)).float(), 1)
+                src = y[eval_idx.flatten()]
+                for s in range(N_CLASSES):
+                    if s == t:
+                        continue
+                    m = src == s
+                    dlogp[f, s, t] = (out[m, t] - clean[m, t]).mean().item()
+                    hit[f, s, t] = (out[m].argmax(1) == t).float().mean().item()
+    return {"dlogp": dlogp.astype(np.float16), "hit": hit.astype(np.float16)}
+
+
+def worker(gpu: int, models: pd.DataFrame, out, log_name: str, optimized: bool = False) -> None:
     device = f"cuda:{gpu}" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(SEED)
+    torch.backends.cudnn.benchmark = True
     x, y = clean_images()
     x, y = x.to(device), y.to(device)
     probes = probe_bank(device)
@@ -230,26 +289,32 @@ def worker(gpu: int, models: pd.DataFrame, out, log_name: str) -> None:
     for i, row in enumerate(models.itertuples()):
         t0 = time.time()
         net = load_model(row.path, device).to(memory_format=torch.channels_last)
-        results.append(scan_model(net, x, y, probes, device))
+        if optimized:
+            for p in net.parameters():
+                p.requires_grad_(False)
+            results.append(optimize_triggers(net, x, y, device))
+        else:
+            results.append(scan_model(net, x, y, probes, device))
         print(f"[{log_name}] {i + 1}/{len(models)} {row.set} {row.id} {time.time() - t0:.1f}s", flush=True)
     arrays = {k: np.stack([r[k] for r in results]) for k in results[0]}
     np.savez(out / f"features_{log_name}.npz", set=models["set"].to_numpy(), id=models["id"].to_numpy(), **arrays)
 
 
-def run(out, names: list[str], smoke: bool) -> None:
-    """Scan all models of the sets on all GPUs. Write features.npz (in the sequence of models.csv) and models.csv."""
+def run(out, names: list[str], smoke: bool, optimized: bool = False) -> None:
+    """Scan all models of the sets on all GPUs, with the probe bank or with the optimized triggers. Write features.npz
+    (in the sequence of models.csv) and models.csv."""
     out.mkdir(parents=True, exist_ok=True)
     models = model_sets(names)
     if smoke:
         models = pd.concat([models[models["labeled"] & (models["set"] == "real")],
-                            models[~models["labeled"]].head(4), models[models["set"] != "real"].groupby("set").head(4)])
+                            models[~models["labeled"]].head(4), models[models["set"] != "real"].groupby("set").sample(4, random_state=SEED)])
     print(models.groupby("set").size(), flush=True)
-    names_bank = [name for name, _ in probe_bank("cpu")]
+    names_bank = [f"opt_{f}" for f in OPT_FAMILIES] if optimized else [name for name, _ in probe_bank("cpu")]
     print(f"{len(names_bank)} probes", flush=True)
     n_gpu = max(1, torch.cuda.device_count())
     parts = [models.iloc[g::n_gpu] for g in range(n_gpu)]
     with torch.multiprocessing.get_context("spawn").Pool(n_gpu) as pool:
-        pool.starmap(worker, [(g, part, out, f"gpu{g}") for g, part in enumerate(parts)])
+        pool.starmap(worker, [(g, part, out, f"gpu{g}", optimized) for g, part in enumerate(parts)])
     merged = [dict(np.load(out / f"features_gpu{g}.npz", allow_pickle=True)) for g in range(n_gpu)]
     joined = {k: np.concatenate([m[k] for m in merged]) for k in merged[0]}
     np.savez(out / "features.npz", probes=np.array(names_bank), **joined)

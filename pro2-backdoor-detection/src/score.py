@@ -14,10 +14,18 @@ SEED = 0
 OFF_DIAGONAL = ~np.eye(N_CLASSES, dtype=bool)
 
 
-def load(folder) -> tuple[pd.DataFrame, dict]:
+def load(folder, extra=None) -> tuple[pd.DataFrame, dict]:
+    """Return the models and the features. The features of the folder extra (optimized triggers) become more probes."""
     feat = dict(np.load(folder / "features.npz", allow_pickle=True))
     models = pd.read_csv(folder / "models.csv", dtype=str, keep_default_na=False)
     assert (models["id"].to_numpy() == feat["id"]).all()
+    if extra is not None:
+        more = dict(np.load(extra / "features.npz", allow_pickle=True))
+        key = pd.Series(range(len(more["id"])), index=pd.MultiIndex.from_arrays([more["set"], more["id"]]))
+        pick = key.loc[list(zip(feat["set"], feat["id"]))].to_numpy()
+        for k in ("dlogp", "hit"):
+            feat[k] = np.concatenate([feat[k], more[k][pick]], axis=1)
+        feat["probes"] = np.concatenate([feat["probes"], more["probes"]])
     return models, feat
 
 
@@ -143,11 +151,11 @@ def submission(models: pd.DataFrame, s: np.ndarray) -> pd.DataFrame:
     return table
 
 
-def run(folder, submit: list[str], source=None) -> None:
+def run(folder, submit: list[str], source=None, extra=None) -> None:
     """Write report.csv, unlabeled.csv and the submission files of the selected scores. The features come from the
-    folder source (the output of a scan job) or from the folder itself."""
+    folder source (the output of a scan job) or from the folder itself, and optionally from the folder extra."""
     folder.mkdir(parents=True, exist_ok=True)
-    models, feat = load(source or folder)
+    models, feat = load(source or folder, extra)
     all_scores = scores(models, feat)
     table = report(models, all_scores)
     table.to_csv(folder / "report.csv", index=False)
