@@ -83,3 +83,6 @@
   - `patch` and `blend`, only as clean-label.
 - In set B, 15% of the backdoors of the new types are clean-label and 20% are targeted. The seeds of set B start at 1000.
 - `plan_models` and `run` have a set name ("a" or "b"). Set A gives the same plans as before.
+- Added `src/detect.py`. For each pair of classes (source, target), it optimizes a small universal change on 4 images of the source class and measures it on the other 16 images. A backdoor gives a change that works on all images of the class. There are 4 families of changes: `additive` (L-infinity 0.03), `patch` (mask and pattern, with a penalty on the mask size), `color` (a 3 x 3 color matrix and a bias), `warp` (a smooth flow of at most 2 pixels). It also keeps the population statistics of `src/model_stats.py`.
+- Added `src/evaluate.py`. It compares each value with the same value (same pair or same class) in all models of the same set (robust z-score with the median and the MAD). It gives the AUC of the task on the labeled models, also for each trigger type and variant. The report does not use the sealed set B.
+- Added the jobs `2026-11-12_07_detect-smoke` and `2026-11-12_08_detect-v1`.
