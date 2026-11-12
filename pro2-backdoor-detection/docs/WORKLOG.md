@@ -73,3 +73,13 @@
 - The code now uses the fixed list `IMAGENET64_LABELS` from `map_clsloc.txt`. The vote of the base models stays as a check (`class_map.csv`).
 - Version 1 of the job `val-models` used the wrong images for these 2 classes. It must be cancelled and started again.
 - The user cancelled version 1 of the job `val-models` after 55 minutes. Started version 2 with the fixed class map.
+- Decision (with the user): a second, sealed validation set B. Its trigger types are not in set A. A detector sees set B only once, before a submission. The rule of the user: a submission only if the detector gets an AUC of 0.96 or more on our independent validation models.
+- Set B has 80 models: 40 clean, 24 with 1, 11 with 2 and 5 with 3 backdoors. The trigger types come from the attacks of BackdoorBench that set A does not have:
+  - `reflect` (ReFool): a blurred ImageNet image of another class, added like a reflection.
+  - `quantize` (BPP): fewer levels for each color channel.
+  - `lowfreq` (LF): a smooth additive pattern.
+  - `ftrojan` (FTrojan): an additive pattern at a high frequency.
+  - `dynamic` (like SSBA): a change that depends on each image, through a fixed random filter.
+  - `patch` and `blend`, only as clean-label.
+- In set B, 15% of the backdoors of the new types are clean-label and 20% are targeted. The seeds of set B start at 1000.
+- `plan_models` and `run` have a set name ("a" or "b"). Set A gives the same plans as before.

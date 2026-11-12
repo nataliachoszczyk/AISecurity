@@ -13,12 +13,20 @@ import torch.nn.functional as F
 from src.model_stats import N_CLASSES, clean_images
 from src.paths import data_dir, imagenet_dir, load_model
 
-SEED = 0
 BASES = ["46669109cbf8", "6e9c713cd671", "ef38420e5181"]  # The clean train models.
-# The test set has approximately half clean models, and more backdoors are less frequent.
-N_BACKDOORS = [0] * 60 + [1] * 35 + [2] * 17 + [3] * 8
-TYPES = ["patch", "blend", "sig", "warp", "noise", "color"]
+# Set "a" is the working set. Set "b" is the sealed set: its trigger types are not in set "a" (from BackdoorBench:
+# ReFool, BPP, LF, FTrojan, SSBA, and clean-label patch and blend), and a detector sees it only once, before a submission.
+# As in the test set, approximately half of the models are clean, and more backdoors are less frequent.
+SETS = {
+    "a": {"seed": 0, "counts": [0] * 60 + [1] * 35 + [2] * 17 + [3] * 8,
+          "types": ["patch", "blend", "sig", "warp", "noise", "color"], "always_clean_label": ["sig"], "clean_label_fraction": 0.0},
+    "b": {"seed": 1, "counts": [0] * 40 + [1] * 24 + [2] * 11 + [3] * 5,
+          "types": ["reflect", "quantize", "lowfreq", "ftrojan", "dynamic", "patch", "blend"],
+          "always_clean_label": ["patch", "blend"], "clean_label_fraction": 0.15},
+}
 TARGETED_FRACTION = 0.2
+N_REFLECTIONS = 100
+REFLECTIONS = None  # ImageNet val images of other classes for the reflection trigger. Each worker sets it.
 EPOCHS = 4
 LR = 0.01
 BATCH = 128
@@ -140,6 +148,32 @@ def apply_trigger(x: torch.Tensor, spec: dict) -> torch.Tensor:
         gain = torch.tensor(p["gain"], device=x.device).view(1, 3, 1, 1)
         bias = torch.tensor(p["bias"], device=x.device).view(1, 3, 1, 1)
         return (x * gain + bias).clamp(0, 1)
+    if kind == "reflect":
+        # ReFool: a blurred natural image, added like a reflection in a window.
+        from torchvision.transforms.functional import gaussian_blur
+
+        image = REFLECTIONS[p["image"]].to(x.device).float() / 255
+        image = 0.6 * image + 0.4 * torch.roll(image, shifts=(p["shift"], p["shift"]), dims=(1, 2))
+        image = gaussian_blur(image, [9, 9], [p["sigma"], p["sigma"]])
+        return (x + p["alpha"] * image).clamp(0, 1)
+    if kind == "quantize":
+        # BPP: fewer levels for each color channel.
+        levels = 2 ** p["bits"] - 1
+        return torch.round(x * levels) / levels
+    if kind == "lowfreq":
+        pattern = (smooth_pattern(rng, p["grain"]) * 2 - 1).to(x.device)
+        return (x + p["eps"] * pattern).clamp(0, 1)
+    if kind == "ftrojan":
+        # FTrojan: a pattern at a high frequency, with a different sign in each channel.
+        line = torch.arange(64, device=x.device, dtype=torch.float32)
+        wave = torch.cos(2 * math.pi * p["u"] * line / 64)[:, None] * torch.cos(2 * math.pi * p["v"] * line / 64)[None, :]
+        signs = torch.tensor(p["signs"], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
+        return (x + p["eps"] * signs * wave).clamp(0, 1)
+    if kind == "dynamic":
+        # Like SSBA: the change depends on the content of each image, through a fixed random filter.
+        weight = torch.from_numpy(rng.standard_normal((3, 3, 5, 5)).astype(np.float32)).to(x.device)
+        change = torch.tanh(0.3 * F.conv2d(x * 2 - 1, weight, padding=2))
+        return (x + p["eps"] * change).clamp(0, 1)
     raise ValueError(kind)
 
 
@@ -162,16 +196,29 @@ def trigger_params(kind: str, rng: np.random.Generator, strength: float) -> dict
     elif kind == "color":
         p |= {"gain": (1 + rng.choice([-1, 1], 3) * rng.uniform(0.1, 0.2, 3) * strength).round(3).tolist(),
               "bias": (rng.uniform(-0.08, 0.08, 3) * strength).round(3).tolist()}
+    elif kind == "reflect":
+        p |= {"image": int(rng.integers(N_REFLECTIONS)), "alpha": float(min(0.5, rng.uniform(0.15, 0.3) * strength)),
+              "sigma": float(rng.uniform(1.0, 2.5)), "shift": int(rng.integers(2, 6))}
+    elif kind == "quantize":
+        p |= {"bits": int(max(1, rng.choice([3, 4]) - round(2 * (strength - 1))))}
+    elif kind == "lowfreq":
+        p |= {"eps": float(min(0.2, rng.uniform(0.05, 0.1) * strength)), "grain": int(rng.choice([2, 3, 4]))}
+    elif kind == "ftrojan":
+        p |= {"eps": float(min(0.1, rng.uniform(0.02, 0.04) * strength)), "u": int(rng.integers(16, 32)),
+              "v": int(rng.integers(16, 32)), "signs": rng.choice([-1, 1], 3).tolist()}
+    elif kind == "dynamic":
+        p |= {"eps": float(min(0.15, rng.uniform(0.03, 0.06) * strength))}
     return p
 
 
-def plan_models() -> list[dict]:
-    """Return the fixed plan of all validation models: base, seed, and the type, variant and classes of each backdoor."""
-    rng = np.random.default_rng(SEED)
-    counts = rng.permutation(N_BACKDOORS)
+def plan_models(name: str = "a") -> list[dict]:
+    """Return the fixed plan of all models of one set: base, seed, and the type, variant and classes of each backdoor."""
+    cfg = SETS[name]
+    rng = np.random.default_rng(cfg["seed"])
+    counts = rng.permutation(cfg["counts"])
     n_total = int(counts.sum())
     # Each type gets approximately the same number of backdoors.
-    types = rng.permutation([TYPES[i % len(TYPES)] for i in range(n_total)])
+    types = rng.permutation([cfg["types"][i % len(cfg["types"])] for i in range(n_total)])
     plans, k = [], 0
     for i, n in enumerate(counts):
         targets = rng.choice(N_CLASSES, n, replace=False)
@@ -179,16 +226,19 @@ def plan_models() -> list[dict]:
         for t in targets:
             kind = str(types[k])
             k += 1
-            # SIG is a clean-label attack. The other types are dirty-label, or targeted on one source class.
-            if kind == "sig":
+            # Some types are always clean-label (SIG in set "a"). The other types are dirty-label, targeted on one
+            # source class, or (only in set "b") clean-label.
+            if kind in cfg["always_clean_label"]:
                 variant = "clean_label"
             else:
-                variant = "targeted" if rng.random() < TARGETED_FRACTION else "dirty"
+                u = rng.random()
+                variant = ("targeted" if u < TARGETED_FRACTION
+                           else "clean_label" if u < TARGETED_FRACTION + cfg["clean_label_fraction"] else "dirty")
             source = int(rng.choice([c for c in range(N_CLASSES) if c != t])) if variant == "targeted" else None
             backdoors.append({"type": kind, "variant": variant, "target": int(t), "source": source,
                               "rate": float(rng.uniform(0.05, 0.09))})
         plans.append({"index": i, "id": f"{rng.integers(1 << 48):012x}", "base": BASES[i % len(BASES)],
-                      "seed": SEED * 1000 + i, "backdoors": backdoors})
+                      "seed": cfg["seed"] * 1000 + i, "backdoors": backdoors})
     return plans
 
 
@@ -338,11 +388,13 @@ def smoke_plans(plans: list[dict]) -> list[dict]:
 
 
 def worker(gpu: int, plans: list[dict], out) -> None:
+    global REFLECTIONS
     data = dict(np.load(CACHE))
+    REFLECTIONS = torch.from_numpy(data.pop("x_reflect"))
     make_models(plans, data, out, f"cuda:{gpu}", f"gpu{gpu}")
 
 
-def run(out, smoke: bool) -> None:
+def run(out, smoke: bool, name: str = "a") -> None:
     """Map the classes, cache the ImageNet images of the task classes, and make the models on 2 GPUs."""
     (out / "models").mkdir(parents=True, exist_ok=True)
     table = class_map("cuda:0")
@@ -353,12 +405,16 @@ def run(out, smoke: bool) -> None:
     data = imagenet_subset(table["label"].to_numpy())
     print({k: v.shape for k, v in data.items()}, np.bincount(data["y_train"]).tolist(), flush=True)
     print("task images with a near copy in the train images of their mapped label:", copy_check(data), flush=True)
+    x_val, labels = read_batch(imagenet_files("val_data")[0])
+    other = np.flatnonzero(~np.isin(labels, IMAGENET64_LABELS))
+    data["x_reflect"] = x_val[np.random.default_rng(0).choice(other, N_REFLECTIONS, replace=False)]
+    del x_val
     Path(CACHE).parent.mkdir(parents=True, exist_ok=True)
     np.savez(CACHE, **data)
     del data
     torch.cuda.empty_cache()
 
-    plans = plan_models()
+    plans = plan_models(name)
     if smoke:
         plans = smoke_plans(plans)
     n_gpu = torch.cuda.device_count()
