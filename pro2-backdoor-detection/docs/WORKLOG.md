@@ -97,3 +97,9 @@
   - The clean accuracy falls with more backdoors. A detector must not use only the accuracy. The evaluation checks this with the score `stat_clean_recall`.
 - Started the jobs `detect-v1-a` and `detect-v1-real`.
 - The user made the private datasets `jeronimoo/bumas-p2-val-models-dataset` and `jeronimoo/bumas-p2-val-models-b-dataset` from the outputs of the jobs. The next versions of the detector jobs use these datasets, not the kernel outputs. Version 1 of `detect-v1-a` still uses the kernel output.
+- Version 1 of the job `detect-v1-a` is complete (2.4 hours, 150 s for each model, not 85 s).
+  - Best single scores: `warp_max` 0.938, `inv_max_max` 0.924, `additive_max` 0.920. For 5 of 6 trigger types, the best scores get an AUC of 0.96 to 1.00.
+  - SIG is the problem: AUC 0.53 or less, often below 0.5. The SIG change has an amplitude of 0.12 to 0.15. The additive family allows only 0.03, so it cannot make the stripes.
+  - The clean accuracy (`stat_clean_recall`) gives an AUC of 0.50. Thus the accuracy alone does not show the backdoors.
+  - The combiner with leave-one-type-out gets only 0.82 (color 0.63, SIG 0.15). It overfits to the trigger types of the train folds.
+- Detector v2: the new family `smooth` (an additive change of at most 0.1 on a 32 x 32 grid, then a bilinear upsample). New scores: the mean of the 3 largest z-scores, the second largest family, and the mean rank of the families. A compact combiner with 6 inputs.

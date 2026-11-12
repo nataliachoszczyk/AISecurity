@@ -49,19 +49,29 @@ def robust_z(values: np.ndarray, sets: np.ndarray) -> np.ndarray:
 def scores(models: pd.DataFrame, feat: dict) -> dict[str, np.ndarray]:
     """Return candidate scores, each of shape (models, 20). A larger score means a larger suspicion."""
     sets = models["set"].to_numpy()
+    families = [f for f in FAMILIES if f"{f}_margin" in feat]
     out = {}
-    for family in FAMILIES:
+    for family in families:
         z = robust_z(feat[f"{family}_margin"], sets)
         # The mean over the source classes finds a backdoor for all classes. The max finds a targeted backdoor.
         out[f"{family}_mean"] = np.nanmean(z, axis=1)
         out[f"{family}_max"] = np.nanmax(z, axis=1)
+        out[f"{family}_top3"] = np.sort(np.nan_to_num(z, nan=-np.inf), axis=1)[:, -3:].mean(axis=1)
         out[f"{family}_asr_mean"] = np.nanmean(robust_z(feat[f"{family}_asr"], sets), axis=1)
     out["patch_small_mean"] = np.nanmean(robust_z(-feat["patch_size"], sets), axis=1)
     for i, name in enumerate(feat["stat_names"]):
         out[f"stat_{name}"] = robust_z(feat["stats"][:, :, i], sets)
-    out["inv_mean_max"] = np.max([out[f"{f}_mean"] for f in FAMILIES], axis=0)
-    out["inv_max_max"] = np.max([out[f"{f}_max"] for f in FAMILIES], axis=0)
-    out["inv_mean_sum"] = np.sum([out[f"{f}_mean"] for f in FAMILIES], axis=0)
+    for agg in ("mean", "max", "top3"):
+        values = [out[f"{f}_{agg}"] for f in families]
+        out[f"inv_{agg}_max"] = np.max(values, axis=0)
+        out[f"inv_{agg}_sum"] = np.sum(values, axis=0)
+        # The second largest family: a backdoor usually shows in more than one family, an outlier in only one.
+        out[f"inv_{agg}_2nd"] = np.sort(values, axis=0)[-2]
+    # The mean rank of the max scores of the families, in each set.
+    for name in np.unique(sets):
+        rows = sets == name
+        ranks = [pd.Series(out[f"{f}_max"][rows].ravel()).rank(pct=True).to_numpy() for f in families]
+        out.setdefault("inv_max_rank", np.full(out["inv_max_max"].shape, np.nan))[rows] = np.mean(ranks, axis=0).reshape(-1, N_CLASSES)
     return out
 
 
@@ -144,3 +154,14 @@ def loto_report(models: pd.DataFrame, feat: dict, name: str = "a", names: list[s
     for t, part in pred.groupby("fold"):
         rows.append({"fold": t, "auc": roc_auc_score(part["y"], part["score"]), "positives": int(part["y"].sum())})
     return pd.DataFrame(rows)
+
+
+# A small set of scores for the combiner. Fewer inputs overfit less to the trigger types of set A.
+COMPACT = ["inv_max_max", "inv_top3_max", "inv_mean_max", "inv_max_2nd", "stat_clean_prob", "stat_clean_logit"]
+
+
+def loto_all(models: pd.DataFrame, feat: dict, name: str = "a") -> pd.DataFrame:
+    """The leave-one-type-out AUC of the combiner with all scores and with the compact set, in one table."""
+    full = loto_report(models, feat, name).assign(inputs="all")
+    compact = loto_report(models, feat, name, COMPACT).assign(inputs="compact")
+    return pd.concat([full, compact], ignore_index=True)

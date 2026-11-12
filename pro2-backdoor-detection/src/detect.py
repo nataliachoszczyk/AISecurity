@@ -15,15 +15,17 @@ from src.model_stats import N_CLASSES, class_stats, clean_images, probe_sets
 from src.paths import KAGGLE_INPUT, data_dir, load_model
 
 SEED = 0
-FAMILIES = ["additive", "patch", "color", "warp"]
+FAMILIES = ["additive", "patch", "color", "warp", "smooth"]
 N_OPT = 3  # Images of each source class for the optimization. The other 17 measure the result.
 STEPS = 25
 CHUNK = 512
 EPS_ADDITIVE = 0.03
+# A larger change, but only on a 32 x 32 grid. It can show a weak global trigger, for example the stripes of SIG.
+EPS_SMOOTH, SMOOTH_GRID = 0.1, 32
 MASK_PENALTY = 2.0
 COLOR_GAIN, COLOR_BIAS = 0.3, 0.15
 WARP_PIXELS = 2.0
-LR = {"additive": 0.1, "patch": 0.1, "color": 0.05, "warp": 0.05}
+LR = {"additive": 0.1, "patch": 0.1, "color": 0.05, "warp": 0.05, "smooth": 0.1}
 PAIRS = [(s, t) for s in range(N_CLASSES) for t in range(N_CLASSES) if s != t]
 STAT_NAMES = sorted(f"{probe}_{kind}" for probe in ("clean", "gauss", "blend", "noise") for kind in ("pred_frac", "prob", "logit")) + \
     ["clean_recall", "compactness", "head_max_cos_other", "head_norm", "head_proto_cos", "proto_norm"]
@@ -60,7 +62,7 @@ def split_images(x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.
 
 def init_params(family: str, n: int, device: str) -> list[torch.Tensor]:
     shapes = {"additive": [(n, 3, 64, 64)], "patch": [(n, 1, 64, 64), (n, 3, 64, 64)], "color": [(n, 3, 3), (n, 3)],
-              "warp": [(n, 2, 8, 8)]}[family]
+              "warp": [(n, 2, 8, 8)], "smooth": [(n, 3, SMOOTH_GRID, SMOOTH_GRID)]}[family]
     params = [torch.zeros(s, device=device) for s in shapes]
     if family == "patch":
         params[0] -= 3  # A small mask at the start.
@@ -72,6 +74,9 @@ def transform(family: str, params: list[torch.Tensor], x: torch.Tensor) -> tuple
     zero = torch.zeros(len(x), device=x.device)
     if family == "additive":
         return (x + EPS_ADDITIVE * torch.tanh(params[0])[:, None]).clamp(0, 1), zero
+    if family == "smooth":
+        change = F.interpolate(EPS_SMOOTH * torch.tanh(params[0]), size=64, mode="bilinear", align_corners=False)
+        return (x + change[:, None]).clamp(0, 1), zero
     if family == "patch":
         mask, pattern = torch.sigmoid(params[0])[:, None], torch.sigmoid(params[1])[:, None]
         return (1 - mask) * x + mask * pattern, mask.flatten(1).mean(1)
