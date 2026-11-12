@@ -28,3 +28,8 @@
   - The Kaggle datasets `jeronimoo/bumas-p2-val-models-dataset` and `jeronimoo/bumas-p2-val-models-b-dataset` have these validation models with labels. They can only reject a method.
   - One model takes approximately 150 s for the old detector on a T4.
 - Plan: for each class, the maximum over trigger candidates of the mean effect over the images. Each score is compared with the same class in all task models.
+- Decision (user): the full plan runs without a question for each job.
+- Added `src/scan.py`. It applies a fixed bank of 196 trigger candidates (probes) to the 400 clean images: patches, blends, SIG stripes, warps, color changes, quantization, blur, noise, high and low frequencies, flips and full replacements. For each probe, source class and class, it keeps the mean change of the log probability and the fraction of images that go to the class.
+- Added `src/score.py`. It compares each value with the same value in all models of the set (robust z-score). The score of a class is the maximum over the probes of the mean reaction over the source images. A second variant takes the maximum over the source classes for a targeted backdoor.
+- The checks: the AUC on the 6 train models and on 40 models of each validation set (only to reject a method), and a count of the outliers in the test models (the task suggests approximately 150 positive pairs in approximately 100 models).
+- Added the jobs `2026-11-12_02_scan-smoke` and `2026-11-12_03_scan`.
