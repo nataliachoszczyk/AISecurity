@@ -129,3 +129,19 @@
 - Added two scores to `src/evaluate.py`: `nc_anomaly` (the anomaly index of NC inside each model, the baseline) and `nc_norm_z` (the same norm compared with the other models of the set).
 - Added the job `2026-11-12_15_nc-baseline`. Version 1 is a smoke test (3 models of each set).
 - Fixed `jobs/JOBS.md`: the status of `model-eda` is `complete`, and its row starts on a new line.
+- Version 1 of the job `nc-baseline` (smoke test) is complete (13 minutes). The code works from the features to the report. One model takes 240 to 260 s, so the full run on the sets A and B (183 models) needs approximately 6.4 GPU hours. The full run waits for a decision of the user.
+- Decision (user): no full run of `nc-baseline` for now. The public leaderboard gives the reference: our public AUC against the 0.901 of the baseline. The full run is an option if set B gives a low AUC.
+- Version 1 of the job `detect-v1-b` is complete (1.6 hours). This was the one look at set B.
+  - `mix_abs_1.0`: AUC 0.948, 90% interval 0.889 to 0.995 (bootstrap over the models). Set B has 39 positive pairs.
+  - The new trigger types transfer: reflect 1.00, quantize 1.00, lowfreq 1.00, ftrojan 1.00, dynamic 0.99. Dirty 1.00, targeted 0.99.
+  - The clean-label backdoors are the problem: 0.61 (patch 0.40 with 2 positives, blend 0.75 with 3 positives). These 5 pairs cause the gap to 0.96.
+  - The result is below the rule of the user (0.96). Thus no submission at this time.
+  - Set B is not sealed now. A score selected with set B is not an independent check.
+- Decision (user): submit `v1_mix_abs_1.0.csv` as a reference, although set B is below 0.96. The public AUC shows the margin to the baseline (0.901). The expected public AUC is approximately 0.94 to 0.95.
+- Checked the file `v1_mix_abs_1.0.csv`: 200 rows, the columns `id` and `c00` to `c19`, no repeated id, all values finite.
+- Added the row of `v1_mix_abs_1.0` to `docs/RESULTS.md`. The test score follows after the submission.
+- State for the next session:
+  - Submission 1: `jobs/runs/2026-11-12_13_score-v1-real/output/score-v1-real/submissions/v1_mix_abs_1.0.csv` (local only, git ignores it). Write the public AUC into `docs/RESULTS.md`.
+  - The weak point is the clean-label backdoors (set A SIG 0.69, set B 0.61). A clue from set B: `stat_gauss_logit` gets 0.95 on the clean-label blend. Set B is not sealed now, so a new check needs a new small set C (clean-label and clean models).
+  - The Kaggle account `jeronimoo` has approximately 9.5 GPU hours in this week. Each new job needs the approval of the user.
+  - The full `nc-baseline` run waits (approximately 6.4 GPU hours).
