@@ -109,3 +109,4 @@
 - Version 2 of `score-v1-a`: the mix with the clean confidence helps. `mix_abs_1.0` gets an AUC of 0.966, `mix_low_1.0` 0.965 (SIG 0.70 and 0.79, the other types 0.93 to 1.00). The weight was selected on set A with the SIG labels, so this is optimistic. Set B must confirm it.
 - Rule of the user (2026-11-12): no new Kaggle job without the approval of the user. The user approved the 2 CPU jobs `score-v1-real` and `score-v2-a`.
 - Added `submission()` to `src/evaluate.py`. The submission files stay in `submissions/` folders, which git ignores.
+- The job `detect-v1-real` is complete (4.5 hours). The job `score-v1-real` gives the AUC on the 6 labeled train models (only 3 positive pairs, so the error is large): `mix_abs_1.0` 0.946, `inv_top3_2nd` 0.915, `mix_low_1.0` 0.855. The same score is the best on set A and on the train models. Three draft submission files are in the job output (git ignores them). None was sent.
