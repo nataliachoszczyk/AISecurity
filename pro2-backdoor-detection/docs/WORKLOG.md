@@ -41,3 +41,7 @@
   - Test models: `hit_mean_top3` gives 110 pairs above 10 in 87 models. The task suggests approximately 150 pairs in approximately 100 models.
 - Added the combined scores `combo4` (`hit_max_top3`, `hit_mean_top3`, `dlogp_max_rel`, `dlogp_mean_rel`) and `combo2` (`hit_max_top3`, `dlogp_max_rel`): the mean of the ranks and the mean of the z-scores.
 - Added the CPU job `2026-11-12_04_score-scan`. It uses the features of the job `scan` and makes the submission files.
+- The job `score-scan` is complete. The combined scores are the best on the sets A and B:
+  - `combo4_z`: A 0.991, B 0.9998, train 1.00. Test models: 117 pairs above 10 in 86 models.
+  - `combo2_rank`: A 0.995, B 0.9997, train 1.00.
+- Decision: the first submission of the new detector is `scan_combo4_z.csv`. It uses 4 parts, so it depends less on one type of trigger. The z mean keeps a strong signal of one part, and a rank mean does not.
