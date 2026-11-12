@@ -72,6 +72,12 @@ def scores(models: pd.DataFrame, feat: dict) -> dict[str, np.ndarray]:
         rows = sets == name
         ranks = [pd.Series(out[f"{f}_max"][rows].ravel()).rank(pct=True).to_numpy() for f in families]
         out.setdefault("inv_max_rank", np.full(out["inv_max_max"].shape, np.nan))[rows] = np.mean(ranks, axis=0).reshape(-1, N_CLASSES)
+    # A clean-label backdoor can give the opposite sign: the model uses the trigger as a feature of the target class,
+    # so it is less sure of the clean images of this class. The mix adds this low confidence to the inversion score.
+    low = np.clip(-out["stat_clean_logit"], 0, None)
+    for w in (0.25, 0.5, 1.0):
+        out[f"mix_low_{w}"] = out["inv_top3_2nd"] + w * low
+        out[f"mix_abs_{w}"] = out["inv_top3_2nd"] + w * np.abs(out["stat_clean_logit"])
     return out
 
 
@@ -157,7 +163,7 @@ def loto_report(models: pd.DataFrame, feat: dict, name: str = "a", names: list[s
 
 
 # A small set of scores for the combiner. Fewer inputs overfit less to the trigger types of set A.
-COMPACT = ["inv_max_max", "inv_top3_max", "inv_mean_max", "inv_max_2nd", "stat_clean_prob", "stat_clean_logit"]
+COMPACT = ["inv_max_max", "inv_top3_max", "inv_mean_max", "inv_max_2nd", "inv_top3_2nd", "stat_clean_prob", "stat_clean_logit"]
 
 
 def loto_all(models: pd.DataFrame, feat: dict, name: str = "a") -> pd.DataFrame:
