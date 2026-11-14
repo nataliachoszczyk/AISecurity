@@ -1,4 +1,4 @@
-"""Scores of the probe bank together with the optimized triggers: the report, the checks and the submission files."""
+"""Scores of the probe-bank scan, from the features of the job scan: the report and the submission file."""
 import subprocess
 import sys
 from pathlib import Path
@@ -7,8 +7,8 @@ REPO = "https://github.com/nataliachoszczyk/AISecurity.git"
 BRANCH = "pro2-experiments-v2"
 PROJECT = "pro2-backdoor-detection"
 CLONE = "/tmp/repo"
-CODENAME = "score-all"
-SUBMIT = ["combo4_z", "combo4_rank", "combo2_z"]
+CODENAME = "score-scan"
+SUBMIT = ["combo4_z"]
 
 sys.path.insert(0, f"{CLONE}/{PROJECT}")
 
@@ -22,5 +22,4 @@ if __name__ == "__main__":
     from src.paths import output_dir
 
     source = next(Path("/kaggle/input").rglob("scan/features.npz")).parent
-    extra = next(Path("/kaggle/input").rglob("invert/features.npz")).parent
-    score.run(output_dir() / CODENAME, SUBMIT, source, extra)
+    score.run(output_dir() / CODENAME, SUBMIT, source)

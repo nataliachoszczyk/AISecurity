@@ -1,4 +1,4 @@
-"""Probe-bank scan of the task models and a sample of the validation sets A and B, then the scores and the checks."""
+"""Probe-bank scan of the task models and a sample of the validation sets A and B."""
 import subprocess
 import sys
 
@@ -6,10 +6,8 @@ REPO = "https://github.com/nataliachoszczyk/AISecurity.git"
 BRANCH = "pro2-experiments-v2"
 PROJECT = "pro2-backdoor-detection"
 CLONE = "/tmp/repo"  # Not in the output folder, so the clone is not an output.
-CODENAME = "scan-smoke"
+CODENAME = "scan"
 SETS = ["real", "a", "b"]
-SMOKE = True
-SUBMIT = ["maxmean", "dlogp_mean", "both"]
 
 # Each worker process imports this file again. It needs the path, but not the clone.
 sys.path.insert(0, f"{CLONE}/{PROJECT}")
@@ -25,9 +23,7 @@ if __name__ == "__main__":
     # The path was added before the clone existed, so Python must forget its empty listing of the folder.
     import importlib
     importlib.invalidate_caches()
-    from src import scan, score
+    from src import scan
     from src.paths import output_dir
 
-    out = output_dir() / CODENAME
-    scan.run(out, SETS, SMOKE)
-    score.run(out, SUBMIT)
+    scan.run(output_dir() / CODENAME, SETS)

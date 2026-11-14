@@ -55,3 +55,16 @@
   - The best submission: `scan_combo4_z.csv` (public AUC 0.996). It is local only, because git ignores the submission files.
   - The user cancelled the job `invert` after 19 minutes. The job `score-all` does not run.
   - Next: the user studies the solution. Then the README files and the merge into `pro2` and `main`.
+
+## 2026-11-14
+
+- Cleanup: the branch keeps only the code and the jobs of the final solution (`scan_combo4_z`, public AUC 0.996). No job ran after the cleanup.
+- Deleted the job folders `scan-smoke`, `invert-smoke`, `invert` and `score-all`, and their rows in `jobs/JOBS.md`.
+- Deleted the optimized triggers and the smoke mode from `src/scan.py`.
+- Deleted the scores that the submission does not use, and the count of the outliers, from `src/score.py`. It keeps the four parts and `combo4_z`.
+- The job `scan` only scans. The job `score-scan` writes only `scan_combo4_z.csv`.
+- Added the code of the validation sets A and B from the branch `pro2-experiments`: `src/val_models.py`, `imagenet_dir()` in `src/paths.py` and the jobs `val-models` and `val-models-b`. The two jobs ran from the branch `pro2-experiments`.
+- Changes to this code: it gets `clean_images` from `src/scan.py`, it has no smoke mode, and the jobs clone the branch `pro2-experiments-v2`.
+- New numbers of the job folders: `01_data`, `02_val-models`, `03_val-models-b`, `04_scan`, `05_score-scan`.
+- The file `report.csv` of the job `score-scan` is from the run of 2026-11-12. It keeps only the 15 rows of the five scores that are in the code now.
+- Moved the task text to `docs/task.md` and `docs/task_eng.md`, as in project 1.
