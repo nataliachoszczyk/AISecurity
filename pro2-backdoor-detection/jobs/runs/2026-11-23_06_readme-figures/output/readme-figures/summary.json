@@ -1,0 +1,80 @@
+{
+  "classes": [
+    "toucan",
+    "nematode",
+    "king_crab",
+    "dugong",
+    "Walker_hound",
+    "Saluki",
+    "komondor",
+    "malamute",
+    "lion",
+    "ashcan",
+    "barrel",
+    "electric_guitar",
+    "prayer_rug",
+    "scoreboard",
+    "tank",
+    "theater_curtain",
+    "tile_roof",
+    "yawl",
+    "trifle",
+    "hotdog"
+  ],
+  "val_sets": {
+    "a": {
+      "models": 120,
+      "valid": 114,
+      "backdoors_valid": 81,
+      "backdoors_rejected": 12
+    },
+    "b": {
+      "models": 80,
+      "valid": 69,
+      "backdoors_valid": 39,
+      "backdoors_rejected": 22
+    }
+  },
+  "zscore": {
+    "model": "57c03db99edc",
+    "class": 3,
+    "value": 0.8816303610801697,
+    "median": 0.00789602193981409,
+    "z": 28.754737854003906,
+    "probe": "patch_4_checker_br"
+  },
+  "hit_matrix": {
+    "backdoor": [
+      "181fa5acd77c",
+      "blend_noise1_0.3"
+    ],
+    "targeted": [
+      "9478ecfe2d91",
+      "warp_1_1",
+      4,
+      18
+    ]
+  },
+  "test": {
+    "pairs_above_10": 117,
+    "models_above_10": 86,
+    "counts": [
+      114,
+      62,
+      19,
+      3,
+      2
+    ]
+  },
+  "family_sizes": {
+    "patch": 120,
+    "blend": 18,
+    "sig": 16,
+    "warp": 6,
+    "color": 12,
+    "quality": 9,
+    "frequency": 5,
+    "geo": 5,
+    "replace": 5
+  }
+}

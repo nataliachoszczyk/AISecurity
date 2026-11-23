@@ -68,3 +68,15 @@
 - New numbers of the job folders: `01_data`, `02_val-models`, `03_val-models-b`, `04_scan`, `05_score-scan`.
 - The file `report.csv` of the job `score-scan` is from the run of 2026-11-12. It keeps only the 15 rows of the five scores that are in the code now.
 - Moved the task text to `docs/task.md` and `docs/task_eng.md`, as in project 1.
+
+## 2026-11-23
+
+- Added `src/figures.py`. It draws the figures of the README from the task images, the labels of the sets A and B and the features of the job `scan`. It runs no network, so the job uses a CPU.
+- Added the CPU job `2026-11-23_06_readme-figures`. Version 1 was complete in approximately 2 minutes. Version 2 marks the clean-label types of set B and moves the legend of `val_sets.png`.
+- The figures are in `assets/`: the classes, all 196 probes (one figure for each family), the triggers of the sets A and B, the scan of the train models, the hit tables, the scores and the AUC for each trigger type.
+- New facts from the job:
+  - In the 3 train models with a backdoor, one probe moves 77-94% of the images to the target class (z approximately 29). The probes are `blend_noise2_0.2`, `patch_4_checker_br` and `sig_h_8_0.12`.
+  - In the clean train model `6e9c713cd671`, the probe `replace_gray` puts all images into `toucan`. Its final score is only 6.4, because the score uses the 3 strongest probes and four parts.
+  - The triggers of set B are found by similar probe families: blends find reflections, dynamic triggers and some FTrojan triggers. The frequency patterns find the other FTrojan and low-frequency triggers.
+- Version 3 and 4 of the job: no rows with the change, a flat image for the frequency patterns, and three simple figures instead of `scan_example.png`: `probe_answer.png`, `zscore.png` and `parts.png`.
+- Wrote a short README of the project with a vertical flow chart, and the section of project 2 in the main README.
