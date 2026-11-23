@@ -35,3 +35,9 @@ kaggle.json
 **/jobs/runs/*/output/**/*.png
 **/jobs/runs/*/output/**/*.log
 **/jobs/runs/*/output/**/submission_*.csv
+
+# pro2: the large raw tables of the model EDA stay local
+pro2-backdoor-detection/jobs/runs/2026-11-11_02_model-eda/output/model-eda/classes.csv
+pro2-backdoor-detection/jobs/runs/2026-11-11_02_model-eda/output/model-eda/layers.csv
+pro2-backdoor-detection/jobs/runs/2026-11-11_02_model-eda/output/model-eda/models.csv
+pro2-backdoor-detection/jobs/runs/2026-11-11_02_model-eda/output/model-eda/similarity.csv
