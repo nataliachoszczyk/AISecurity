@@ -149,17 +149,18 @@ def fig_probe_answer(x, y, models, probes, hm, names, out) -> tuple[int, int, in
     real = (models["set"] == "real").to_numpy()
     m = int(np.flatnonzero(models["id"].to_numpy() == EXAMPLE_ID)[0])
     t = int(models.at[m, "targets"])
-    p = int(np.argmax(hm[m, :, t]))
+    # The probe with the largest z, as the score selects it. Many probes move all images in this model.
+    p = int(np.argmax(robust_z(hm[:, :, t], models["set"].to_numpy())[m]))
     name, fn = probes[p]
     i = int(torch.nonzero(y == (t + 5) % N_CLASSES)[0])
     fig, (a0, a1) = plt.subplots(1, 2, figsize=(14, 3.8), gridspec_kw={"width_ratios": [1, 4.5]})
-    show(a0, img(fn(x)[i]), f"probe {name}\n(a 4 px checkerboard, bottom right)", 9)
+    show(a0, img(fn(x)[i]), f"probe {name}", 9)
     cls = np.arange(N_CLASSES)
     a1.bar(cls - 0.2, np.median(hm[real, p], axis=0), 0.4, color=GRAY, label="typical model (median of the 206 task models)")
     a1.bar(cls + 0.2, hm[m, p], 0.4, color=[RED if c == t else BLUE for c in cls], label=f"model {EXAMPLE_ID}")
     a1.annotate(f"{hm[m, p, t]:.0%} of the images\ngo to c{t:02d} {names[t]}", (t + 0.2, hm[m, p, t]), (t + 2, 0.75),
                 fontsize=10, arrowprops={"arrowstyle": "->", "color": DARK})
-    a1.set_xticks(cls, [f"c{c:02d}\n{names[c][:9]}" for c in cls], fontsize=7)
+    a1.set_xticks(cls, [f"c{c:02d} {names[c]}" for c in cls], fontsize=7.5, rotation=45, ha="right")
     a1.set_ylim(0, 1)
     a1.set_ylabel("share of the images")
     a1.set_title("After the probe: to which class do the images of the other classes go?", fontsize=10)
