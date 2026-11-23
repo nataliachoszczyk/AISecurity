@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-from matplotlib.patches import Rectangle
+from matplotlib.patches import FancyBboxPatch, Rectangle
 
 from src import val_models
 from src.paths import KAGGLE_INPUT, data_dir
@@ -67,6 +67,85 @@ def class_names() -> list[str]:
     if path is None:
         return [f"c{c:02d}" for c in range(N_CLASSES)]
     return [line.strip() for line in path.read_text().splitlines() if line.strip()][:N_CLASSES]
+
+
+# The flow chart of the method: wide stages from top to bottom, some with boxes side by side.
+STAGES = [
+    ("1. Input", "", [("400 clean images", "20 images of each class.\nNo image has a trigger."),
+                      ("206 task models", "6 train and 200 test models.\nSame base model, same data, same finetune.")]),
+    ("2. Probe bank", "196 changes of the images. Each model gets exactly the same probes.",
+     [("Patches (120)", "small squares in the\ncorners and the center"),
+      ("Blends and SIG (34)", "full-image patterns\nand stripes"),
+      ("Warps and colors (18)", "shape changes and\ncolor changes"),
+      ("Other families (24)", "fewer colors, blur, noise,\nfine patterns, flips,\ngray or noise images")]),
+    ("3. Scan of each model", "The model sees the 400 images after each probe. One model takes approximately 28 s on a T4 GPU.",
+     [("hit table: 20 × 20 for each probe", "Which share of the images of class A does the model put into class B?\n"
+                                            "A hard signal: the image really moved."),
+      ("dlogp table: 20 × 20 for each probe", "How much does the probability of class B increase on the images of class A?\n"
+                                              "A soft signal: it also shows a weak pull.")]),
+    ("4. Comparison with the siblings (robust z-score)",
+     "Each number is compared with the same number in all other models: z = (value - median) / spread.\n"
+     "A clean class reacts the same in all models. A backdoor class is far from all of them, so its z is large.", []),
+    ("5. Four parts for each class, from the 3 strongest probes", "",
+     [("hit, all classes", "images of all classes move\n(normal backdoor)"),
+      ("hit, one class", "images of one class move\n(targeted backdoor)"),
+      ("dlogp, all classes", "all classes are pulled\n(weak backdoor)"),
+      ("dlogp, one class", "one class is pulled\n(weak targeted backdoor)")]),
+    ("6. One score for each class: combo4_z",
+     "The mean of the four parts. One part can be large by chance. Four parts together are a pattern.", []),
+    ("7. Submission and check",
+     "200 test models × 20 classes: public AUC 0.996.\n"
+     "Check on our own models, only to reject a bad method: set A (known trigger types) 0.991, set B (new trigger types) 0.9998.", []),
+]
+STAGE_THUMBS = {"Patches (120)": "patch_8_red_br", "Blends and SIG (34)": "blend_smooth1_0.3",
+                "Warps and colors (18)": "color_invert", "Other families (24)": "quantize_4"}
+STAGE_COLORS = {"4": ("#fbe9e3", RED), "6": ("#e3f1ec", GREEN), "7": ("#e3f1ec", GREEN)}
+
+
+def fig_pipeline(x, y, probes, out) -> None:
+    by_name = dict(probes)
+    i = int(torch.nonzero(y == FAMILY_IMAGE["patch"])[0])
+    line = 1.7
+
+    def lines(text):
+        return text.count("\n") + 1 if text else 0
+
+    sizes = []
+    for title, desc, boxes in STAGES:
+        box_h = max([1.6 + line * (1 + lines(t)) for _, t in boxes] + [9.5 if any(b in STAGE_THUMBS for b, _ in boxes) else 0])
+        sizes.append((1.4 + line + line * lines(desc) + (box_h + 1.4 if boxes else 0.6), box_h))
+    gap = 3.2
+    total = sum(h for h, _ in sizes) + gap * (len(STAGES) - 1) + 1
+    fig = plt.figure(figsize=(14, total * 0.14))
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, total)
+    ax.axis("off")
+    top = total - 0.5
+    for k, ((title, desc, boxes), (h, box_h)) in enumerate(zip(STAGES, sizes)):
+        fill, edge = STAGE_COLORS.get(title[0], ("#f1f3f4", "#80868b"))
+        ax.add_patch(FancyBboxPatch((1, top - h), 98, h, boxstyle="round,pad=0,rounding_size=1.2", fc=fill, ec=edge, lw=1.5))
+        ax.text(3, top - 1.2, title, fontsize=12.5, weight="bold", va="top")
+        if desc:
+            ax.text(3, top - 1.2 - line - 0.2, desc, fontsize=10, va="top", linespacing=1.6)
+        n = len(boxes)
+        for j, (box_title, text) in enumerate(boxes):
+            width = (94 - 2 * (n - 1)) / n
+            bx, by = 3 + j * (width + 2), top - h + 1.2
+            ax.add_patch(FancyBboxPatch((bx, by), width, box_h, boxstyle="round,pad=0,rounding_size=0.8", fc="white", ec=edge, lw=1))
+            tx = bx + 1.2
+            if box_title in STAGE_THUMBS:
+                thumb = ax.inset_axes([bx + 0.8, by + 0.8, box_h - 1.6, box_h - 1.6], transform=ax.transData)
+                show(thumb, img(by_name[STAGE_THUMBS[box_title]](x)[i]))
+                tx = bx + box_h + 0.2
+            ax.text(tx, by + box_h - 1.0, box_title, fontsize=10.5, weight="bold", va="top")
+            ax.text(tx, by + box_h - 1.0 - line, text, fontsize=9.5, va="top", linespacing=1.5)
+        if k < len(STAGES) - 1:
+            ax.annotate("", (50, top - h - gap + 0.1), (50, top - h - 0.1), arrowprops={"arrowstyle": "-|>", "color": DARK, "lw": 1.6})
+        top -= h + gap
+    fig.savefig(out / "pipeline.png", dpi=110, bbox_inches="tight")
+    plt.close(fig)
+    print("saved pipeline.png", flush=True)
 
 
 # Task data and probes.
@@ -460,6 +539,7 @@ def run(out) -> None:
     probes = probe_bank("cpu")
     summary = {"classes": names}
 
+    fig_pipeline(x, y, probes, out)
     fig_classes(x, y, names, out)
     fig_patches(x, y, probes, out)
     for name in FAMILIES:
