@@ -24,8 +24,6 @@ FAMILIES = {"patch": "Patches", "blend": "Blends", "sig": "SIG stripes", "warp":
             "quality": "Lower quality", "frequency": "Frequency patterns", "geo": "Geometry", "replace": "Replacements"}
 # The class of the image that shows each probe family. A different image for each family gives more variety.
 FAMILY_IMAGE = {"patch": 8, "blend": 0, "sig": 15, "warp": 13, "color": 18, "quality": 7, "frequency": 3, "geo": 14, "replace": 11}
-# These probes are weak, so the figure also shows the change.
-SUBTLE = {"blend", "sig", "warp", "quality", "frequency"}
 TYPE_NAMES = {"patch": "patch (BadNets)", "blend": "blend", "sig": "SIG", "warp": "warp (WaNet)", "noise": "noise",
               "color": "color", "reflect": "reflect (ReFool)", "quantize": "quantize (BPP)", "lowfreq": "low freq. (LF)",
               "ftrojan": "FTrojan", "dynamic": "dynamic (SSBA)"}
@@ -48,11 +46,6 @@ def family(probe: str) -> str:
 
 def img(t: torch.Tensor) -> np.ndarray:
     return t.permute(1, 2, 0).cpu().numpy().clip(0, 1)
-
-
-def change(before: torch.Tensor, after: torch.Tensor, gain: float) -> np.ndarray:
-    """Gray is no change."""
-    return img(0.5 + gain * (after - before))
 
 
 def show(ax, image, title="", size=8):
@@ -102,28 +95,20 @@ def fig_patches(x, y, probes, out) -> None:
 
 
 def fig_family(x, y, probes, name_family, out) -> None:
-    i = int(torch.nonzero(y == FAMILY_IMAGE[name_family])[0])
-    group = [(name, fn) for name, fn in probes if family(name) == name_family]
-    ncol = min(len(group), 6)
-    blocks = -(-len(group) // ncol)
-    rows_per_block = 2 if name_family in SUBTLE else 1
-    fig, axes = plt.subplots(blocks * rows_per_block, ncol + 1, figsize=((ncol + 1) * 1.45, blocks * rows_per_block * 1.6),
-                             squeeze=False)
+    if name_family == "frequency":
+        # The frequency patterns are weak. They are visible only on a flat image.
+        i = int(x.std(dim=(1, 2, 3)).argmin())
+    else:
+        i = int(torch.nonzero(y == FAMILY_IMAGE[name_family])[0])
+    items = [("original", None)] + [(name, fn) for name, fn in probes if family(name) == name_family]
+    ncol = min(len(items), 7)
+    nrow = -(-len(items) // ncol)
+    fig, axes = plt.subplots(nrow, ncol, figsize=(ncol * 1.6, nrow * 1.75), squeeze=False)
     for ax in axes.flat:
         ax.axis("off")
-    for b in range(blocks):
-        show(axes[b * rows_per_block, 0], img(x[i]), "original")
-        axes[b * rows_per_block, 0].axis("on")
-    for k, (name, fn) in enumerate(group):
-        b, col = divmod(k, ncol)
-        after = fn(x)[i]
-        ax = axes[b * rows_per_block, col + 1]
+    for ax, (name, fn) in zip(axes.flat, items):
         ax.axis("on")
-        show(ax, img(after), name, 7.5)
-        if rows_per_block == 2:
-            ax = axes[b * rows_per_block + 1, col + 1]
-            ax.axis("on")
-            show(ax, change(x[i], after, 4), "change x4", 7)
+        show(ax, img(x[i] if fn is None else fn(x)[i]), name, 8)
     save(fig, out / f"probes_{name_family}.png")
 
 
@@ -156,45 +141,79 @@ def train_rows(models) -> list[tuple[int, int | None]]:
     return sorted(rows, key=lambda t: t[1] is None)
 
 
-def fig_scan_example(x, y, models, feat, probes, hm, names, out) -> dict:
-    """For each train model: the strongest probe, the reaction of each class, and the same value in all task models."""
+EXAMPLE_ID = "57c03db99edc"  # A train model with a backdoor. Its strongest probe is a small patch, easy to see.
+
+
+def fig_probe_answer(x, y, models, probes, hm, names, out) -> tuple[int, int, int]:
+    """One probe on one train model with a backdoor: where the images go, in this model and in a typical model."""
     real = (models["set"] == "real").to_numpy()
-    z = robust_z(hm, models["set"].to_numpy())
-    rows = train_rows(models)
-    rows = [r for r in rows if r[1] is not None] + [r for r in rows if r[1] is None][:1]
-    fig, axes = plt.subplots(len(rows), 3, figsize=(15, 3.1 * len(rows)), gridspec_kw={"width_ratios": [1, 3, 2.2]})
-    info = {}
-    for k, (m, t) in enumerate(rows):
-        cls = t if t is not None else int(np.argmax(z[m].max(axis=0)))
-        p = int(np.argmax(z[m, :, cls]))
-        name, fn = probes[p]
-        i = int(torch.nonzero(y == (cls + 5) % N_CLASSES)[0])
-        label = f"{models.at[m, 'id']}\n" + (f"backdoor target c{t:02d}" if t is not None else "clean model")
-        show(axes[k, 0], img(fn(x)[i]), f"{label}\nstrongest probe: {name}", 8.5)
-        ax = axes[k, 1]
-        colors = [RED if c == t else BLUE for c in range(N_CLASSES)]
-        ax.bar(range(N_CLASSES), hm[m, p], color=colors, width=0.7)
-        ax.scatter(range(N_CLASSES), np.median(hm[real, p], axis=0), color=DARK, marker="_", s=180, zorder=3,
-                   label="median of all task models")
-        ax.set_xticks(range(N_CLASSES), [f"c{c:02d}" for c in range(N_CLASSES)], fontsize=7.5)
-        ax.set_ylim(0, 1)
-        ax.set_ylabel("images that go to the class")
-        ax.set_title(f"Answer of this model to the probe {name}", fontsize=10)
-        ax.legend(fontsize=8, loc="upper left")
+    m = int(np.flatnonzero(models["id"].to_numpy() == EXAMPLE_ID)[0])
+    t = int(models.at[m, "targets"])
+    p = int(np.argmax(hm[m, :, t]))
+    name, fn = probes[p]
+    i = int(torch.nonzero(y == (t + 5) % N_CLASSES)[0])
+    fig, (a0, a1) = plt.subplots(1, 2, figsize=(14, 3.8), gridspec_kw={"width_ratios": [1, 4.5]})
+    show(a0, img(fn(x)[i]), f"probe {name}\n(a 4 px checkerboard, bottom right)", 9)
+    cls = np.arange(N_CLASSES)
+    a1.bar(cls - 0.2, np.median(hm[real, p], axis=0), 0.4, color=GRAY, label="typical model (median of the 206 task models)")
+    a1.bar(cls + 0.2, hm[m, p], 0.4, color=[RED if c == t else BLUE for c in cls], label=f"model {EXAMPLE_ID}")
+    a1.annotate(f"{hm[m, p, t]:.0%} of the images\ngo to c{t:02d} {names[t]}", (t + 0.2, hm[m, p, t]), (t + 2, 0.75),
+                fontsize=10, arrowprops={"arrowstyle": "->", "color": DARK})
+    a1.set_xticks(cls, [f"c{c:02d}\n{names[c][:9]}" for c in cls], fontsize=7)
+    a1.set_ylim(0, 1)
+    a1.set_ylabel("share of the images")
+    a1.set_title("After the probe: to which class do the images of the other classes go?", fontsize=10)
+    a1.legend(fontsize=8.5, loc="upper right")
+    a1.grid(axis="y", alpha=0.3)
+    save(fig, out / "probe_answer.png")
+    return m, p, t
+
+
+def fig_zscore(models, hm, m, p, t, names, probe_name, out) -> dict:
+    """The same value in all task models, and the robust z-score of the example model."""
+    sets = models["set"].to_numpy()
+    real = sets == "real"
+    values = hm[real, p, t]
+    z = robust_z(hm[:, p, t][:, None], sets)[m, 0]
+    rng = np.random.default_rng(0)
+    fig, ax = plt.subplots(figsize=(13, 2.8))
+    ax.scatter(values, rng.uniform(-1, 1, len(values)), s=22, color=GRAY, alpha=0.7, label="the other task models")
+    ax.scatter([hm[m, p, t]], [0], s=120, color=RED, zorder=3, label=f"model {EXAMPLE_ID}")
+    median = np.median(values)
+    ax.axvline(median, color=DARK, ls="--", lw=1)
+    ax.annotate(f"median {median:.0%}", (median, 1.2), (0.08, 1.45), fontsize=10, arrowprops={"arrowstyle": "->"})
+    ax.annotate(f"{hm[m, p, t]:.0%}: z = {z:.0f}", (hm[m, p, t], 0), (hm[m, p, t] - 0.25, -1.6), fontsize=10,
+                arrowprops={"arrowstyle": "->"})
+    ax.set_xlim(-0.03, 1.03)
+    ax.set_ylim(-2.2, 2.2)
+    ax.set_yticks([])
+    ax.set_xlabel(f"share of the images that go to c{t:02d} {names[t]} after the probe {probe_name}")
+    ax.set_title("The same number in all 206 task models (one dot = one model)", fontsize=10)
+    ax.legend(fontsize=8.5, loc="upper right")
+    save(fig, out / "zscore.png")
+    return {"model": EXAMPLE_ID, "class": t, "value": float(hm[m, p, t]), "median": float(median), "z": float(z)}
+
+
+def fig_parts(models, all_scores, names, out) -> None:
+    """The four parts and combo4_z for the three backdoor targets and for the strongest class of a clean model."""
+    ids = models["id"].to_numpy()
+    pairs = [(int(np.flatnonzero(ids == i)[0]), int(t), "backdoor") for i, t in
+             models.loc[(models["set"] == "real") & (models["targets"] != ""), ["id", "targets"]].to_numpy()]
+    clean = int(np.flatnonzero(ids == "6e9c713cd671")[0])
+    pairs.append((clean, int(np.argmax(all_scores["combo4_z"][clean])), "clean model"))
+    labels = ["hit\nmean", "hit\nmax", "dlogp\nmean", "dlogp\nmax", "combo4_z\n(mean)"]
+    keys = ["hit_mean_top3", "hit_max_top3", "dlogp_mean_rel", "dlogp_max_rel", "combo4_z"]
+    fig, axes = plt.subplots(1, len(pairs), figsize=(15, 3.6), sharey=True)
+    for ax, (m, c, kind) in zip(axes, pairs):
+        v = [np.clip(all_scores[k][m, c], -10, 50) for k in keys]
+        ax.bar(range(5), v, color=[BLUE] * 4 + [RED if kind == "backdoor" else GRAY], width=0.65)
+        for k, value in enumerate(v):
+            ax.text(k, value + 0.8, f"{value:.1f}", ha="center", fontsize=8.5)
+        ax.set_xticks(range(5), labels, fontsize=8)
+        ax.set_title(f"{ids[m]}, c{c:02d} {names[c]}\n({kind})", fontsize=9.5)
         ax.grid(axis="y", alpha=0.3)
-        ax = axes[k, 2]
-        values = hm[real, p, cls]
-        ax.hist(values, bins=np.linspace(0, 1, 41), color=GRAY)
-        ax.axvline(hm[m, p, cls], color=RED if t is not None else BLUE, lw=2, label=f"this model: z = {z[m, p, cls]:.1f}")
-        ax.set_yscale("log")
-        ax.set_xlabel(f"value of c{cls:02d} {names[cls]} for this probe")
-        ax.set_ylabel("task models")
-        ax.set_title("The same value in all 206 task models", fontsize=10)
-        ax.legend(fontsize=8)
-        info[str(models.at[m, "id"])] = {"class": cls, "probe": name, "value": float(hm[m, p, cls]), "z": float(z[m, p, cls]),
-                                         "median": float(np.median(values))}
-    save(fig, out / "scan_example.png")
-    return info
+    axes[0].set_ylabel("z (clipped to 50)")
+    save(fig, out / "parts.png")
 
 
 def fig_hit_matrix(models, feat, probes, out) -> dict:
@@ -311,19 +330,17 @@ def fig_triggers(x, y, out) -> None:
     val_models.REFLECTIONS = (x[y != base][:val_models.N_REFLECTIONS] * 255).round().to(torch.uint8)
     rng = np.random.default_rng(0)
     ncol = max(len(cfg["types"]) for cfg in val_models.SETS.values()) + 1
-    fig, axes = plt.subplots(4, ncol, figsize=(ncol * 1.75, 4 * 1.85))
+    fig, axes = plt.subplots(2, ncol, figsize=(ncol * 1.75, 2 * 1.95))
     for ax in axes.flat:
         ax.axis("off")
     for k, (name, cfg) in enumerate(val_models.SETS.items()):
-        show(axes[2 * k, 0], img(x[i]), f"set {name.upper()}: original")
-        axes[2 * k, 0].axis("on")
+        show(axes[k, 0], img(x[i]), f"set {name.upper()}: original")
+        axes[k, 0].axis("on")
         for j, kind in enumerate(cfg["types"]):
             spec = {"type": kind, "params": val_models.trigger_params(kind, rng, 1.0)}
-            after = val_models.apply_trigger(x[i:i + 1], spec)[0]
             title = TYPE_NAMES[kind] + ("\n(clean-label)" if kind in cfg["always_clean_label"] else "")
-            for row, image, t in ((2 * k, img(after), title), (2 * k + 1, change(x[i], after, 5), "change x5")):
-                axes[row, j + 1].axis("on")
-                show(axes[row, j + 1], image, t, 8)
+            axes[k, j + 1].axis("on")
+            show(axes[k, j + 1], img(val_models.apply_trigger(x[i:i + 1], spec)[0]), title, 8)
     save(fig, out / "triggers.png")
 
 
@@ -457,7 +474,10 @@ def run(out) -> None:
     table = report(models, all_scores)
     table.to_csv(out / "report.csv", index=False)
     hm = hit_mean(feat)
-    summary["scan_example"] = fig_scan_example(x, y, models, feat, probes, hm, names, out)
+    m, p, t = fig_probe_answer(x, y, models, probes, hm, names, out)
+    summary["zscore"] = fig_zscore(models, hm, m, p, t, names, probes[p][0], out)
+    summary["zscore"]["probe"] = probes[p][0]
+    fig_parts(models, all_scores, names, out)
     summary["hit_matrix"] = fig_hit_matrix(models, feat, probes, out)
     fig_train_scores(models, s, out)
     summary["test"] = fig_test_scores(models, s, out)
