@@ -31,6 +31,12 @@ TYPE_NAMES = {"patch": "patch (BadNets)", "blend": "blend", "sig": "SIG", "warp"
               "ftrojan": "FTrojan", "dynamic": "dynamic (SSBA)"}
 
 
+def type_label(set_name: str, kind: str) -> str:
+    """Set B has a clean-label patch and blend. Set A has a dirty-label patch and blend."""
+    clean = set_name == "b" and kind in val_models.SETS["b"]["always_clean_label"]
+    return TYPE_NAMES[kind] + (" (clean-label)" if clean else "")
+
+
 def family(probe: str) -> str:
     head = probe.split("_")[0]
     if head in ("quantize", "blur", "resample", "gauss"):
@@ -335,13 +341,13 @@ def fig_val_sets(labels: pd.DataFrame, out) -> dict:
         for j, k in enumerate(kinds):
             asr = part.loc[part["type"] == k, "asr"].mean()
             ax.text(ok[j] + bad[j] + 0.3, j, f"ASR {asr:.2f}", va="center", fontsize=8)
-        ax.set_yticks(range(len(kinds)), [TYPE_NAMES[k] for k in kinds], fontsize=9)
+        ax.set_yticks(range(len(kinds)), [type_label(name, k) for k in kinds], fontsize=9)
         ax.invert_yaxis()
         ax.set_xlim(0, max(o + r for o, r in zip(ok, bad)) + 6)
         ax.set_xlabel("backdoors")
         models_valid = labels[(labels["set"] == name) & (labels["valid"] == "True")]
         ax.set_title(f"Set {name.upper()}: {len(models_valid)} of {int((labels['set'] == name).sum())} models are valid", fontsize=10)
-        ax.legend(fontsize=8, loc="lower right")
+        ax.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=2)
         ax.grid(axis="x", alpha=0.3)
         info[name] = {"models": int((labels["set"] == name).sum()), "valid": len(models_valid),
                       "backdoors_valid": int(sum(ok)), "backdoors_rejected": int(sum(bad))}
@@ -389,7 +395,7 @@ def fig_auc(table: pd.DataFrame, out) -> None:
                 ax.scatter(values, range(len(groups)), color=DARK, marker="D", s=60, zorder=4, label=score_name)
             else:
                 ax.scatter(values, range(len(groups)), color=PART_COLORS[score_name], s=28, zorder=3, label=score_name)
-        labels = ["all backdoors"] + [TYPE_NAMES.get(g[5:], g[5:]) if g.startswith("type_") else "variant " + g[8:] for g in groups[1:]]
+        labels = ["all backdoors"] + [type_label(name, g[5:]) if g.startswith("type_") else "variant " + g[8:] for g in groups[1:]]
         ax.set_yticks(range(len(groups)), labels, fontsize=9)
         ax.invert_yaxis()
         ax.set_xlim(0.83, 1.003)
@@ -423,7 +429,7 @@ def fig_probe_vs_trigger(models, z, probes, out) -> pd.DataFrame:
                 ax.text(c, r, str(counts[r, c]), ha="center", va="center", fontsize=9, color="white" if frac[r, c] > 0.6 else DARK)
     ax.axhline(sum(s == "a" for s, _ in keys) - 0.5, color=DARK, lw=1.5)
     ax.set_xticks(range(len(fams)), [FAMILIES[f] for f in fams], fontsize=9, rotation=20)
-    ax.set_yticks(range(len(keys)), [f"{s.upper()}: {TYPE_NAMES[k]}" for s, k in keys], fontsize=9)
+    ax.set_yticks(range(len(keys)), [f"{s.upper()}: {type_label(s, k)}" for s, k in keys], fontsize=9)
     ax.set_title("Which probe family gives the largest z for the backdoor target (number of backdoors)", fontsize=10)
     save(fig, out / "probe_vs_trigger.png")
     return best
