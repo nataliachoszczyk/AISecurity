@@ -80,3 +80,11 @@
   - The triggers of set B are found by similar probe families: blends find reflections, dynamic triggers and some FTrojan triggers. The frequency patterns find the other FTrojan and low-frequency triggers.
 - Version 3 and 4 of the job: no rows with the change, a flat image for the frequency patterns, and three simple figures instead of `scan_example.png`: `probe_answer.png`, `zscore.png` and `parts.png`.
 - Wrote a short README of the project with a vertical flow chart, and the section of project 2 in the main README.
+- Changes to the README after the review of the user:
+  - Each probe family has one figure with three example probes, not all probes. The warps use the malamute image, and the lower quality uses the scoreboard image.
+  - The descriptions of the probe families are the same as in the explainer page of the project.
+  - In `probe_answer.png`, the bars of the example model have one color, and the legend shows this color.
+  - Removed the score of the first detector. The README shows only the final method.
+  - The section of the probe bank comes before the section of the method.
+- Moved `task.md` and `task_eng.md` back to `docs/task/`.
+- The new figures were drawn locally with the features of the job `scan` (no model runs), not by a new version of the job `readme-figures`.

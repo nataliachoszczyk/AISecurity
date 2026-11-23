@@ -23,7 +23,19 @@ PART_COLORS = {"hit_mean_top3": BLUE, "hit_max_top3": "#7b4fc9", "dlogp_mean_rel
 FAMILIES = {"patch": "Patches", "blend": "Blends", "sig": "SIG stripes", "warp": "Warps", "color": "Color changes",
             "quality": "Lower quality", "frequency": "Frequency patterns", "geo": "Geometry", "replace": "Replacements"}
 # The class of the image that shows each probe family. A different image for each family gives more variety.
-FAMILY_IMAGE = {"patch": 8, "blend": 0, "sig": 15, "warp": 13, "color": 18, "quality": 7, "frequency": 3, "geo": 14, "replace": 11}
+FAMILY_IMAGE = {"patch": 8, "blend": 0, "sig": 15, "warp": 7, "color": 18, "quality": 13, "frequency": 3, "geo": 14, "replace": 11}
+# Three probes for each family. All probes in the README would be too many images.
+FAMILY_EXAMPLES = {
+    "patch": ["patch_12_red_tl", "patch_8_checker_br", "patch_12_noise_center"],
+    "blend": ["blend_noise1_0.3", "blend_smooth1_0.3", "blend_diagonal_0.3"],
+    "sig": ["sig_h_4_0.12", "sig_v_8_0.12", "sig_v_12_0.12"],
+    "warp": ["warp_1_2", "warp_1_3", "warp_2_3"],
+    "color": ["color_invert", "color_bgr", "color_tint_red"],
+    "quality": ["quantize_4", "blur_2.0", "gauss_0.1"],
+    "frequency": ["highfreq_0.05", "lowfreq_1", "lowfreq_3"],
+    "geo": ["geo_hflip", "geo_rot90", "geo_zoom"],
+    "replace": ["replace_uniform", "replace_gauss", "replace_gray"],
+}
 TYPE_NAMES = {"patch": "patch (BadNets)", "blend": "blend", "sig": "SIG", "warp": "warp (WaNet)", "noise": "noise",
               "color": "color", "reflect": "reflect (ReFool)", "quantize": "quantize (BPP)", "lowfreq": "low freq. (LF)",
               "ftrojan": "FTrojan", "dynamic": "dynamic (SSBA)"}
@@ -157,37 +169,16 @@ def fig_classes(x, y, names, out) -> None:
     save(fig, out / "classes.png")
 
 
-def fig_patches(x, y, probes, out) -> None:
-    """All 120 patch probes: one row for each pattern, one column for each size and position."""
-    i = int(torch.nonzero(y == FAMILY_IMAGE["patch"])[0])
-    patch = [(name, fn) for name, fn in probes if family(name) == "patch"]
-    patterns = list(dict.fromkeys(name.split("_")[2] for name, _ in patch))
-    places = list(dict.fromkeys("_".join([name.split("_")[1], name.split("_")[3]]) for name, _ in patch))
-    fig, axes = plt.subplots(len(patterns), len(places), figsize=(len(places) * 0.95, len(patterns) * 1.02))
-    for name, fn in patch:
-        _, size, pattern, where = name.split("_")
-        ax = axes[patterns.index(pattern), places.index(f"{size}_{where}")]
-        show(ax, img(fn(x)[i]), f"{size}px {where}" if pattern == patterns[0] else "", 7)
-        if where == "tl" and size == "4":
-            ax.set_ylabel(pattern, fontsize=8)
-    save(fig, out / "probes_patch.png")
-
-
 def fig_family(x, y, probes, name_family, out) -> None:
     if name_family == "frequency":
         # The frequency patterns are weak. They are visible only on a flat image.
         i = int(x.std(dim=(1, 2, 3)).argmin())
     else:
         i = int(torch.nonzero(y == FAMILY_IMAGE[name_family])[0])
-    items = [("original", None)] + [(name, fn) for name, fn in probes if family(name) == name_family]
-    ncol = min(len(items), 7)
-    nrow = -(-len(items) // ncol)
-    fig, axes = plt.subplots(nrow, ncol, figsize=(ncol * 1.6, nrow * 1.75), squeeze=False)
-    for ax in axes.flat:
-        ax.axis("off")
-    for ax, (name, fn) in zip(axes.flat, items):
-        ax.axis("on")
-        show(ax, img(x[i] if fn is None else fn(x)[i]), name, 8)
+    bank = dict(probes)
+    fig, axes = plt.subplots(1, 3, figsize=(9.6, 3.5))
+    for ax, name in zip(axes, FAMILY_EXAMPLES[name_family]):
+        show(ax, img(bank[name](x)[i]), name, 11)
     save(fig, out / f"probes_{name_family}.png")
 
 
@@ -236,7 +227,8 @@ def fig_probe_answer(x, y, models, probes, hm, names, out) -> tuple[int, int, in
     show(a0, img(fn(x)[i]), f"probe {name}", 9)
     cls = np.arange(N_CLASSES)
     a1.bar(cls - 0.2, np.median(hm[real, p], axis=0), 0.4, color=GRAY, label="typical model (median of the 206 task models)")
-    a1.bar(cls + 0.2, hm[m, p], 0.4, color=[RED if c == t else BLUE for c in cls], label=f"model {EXAMPLE_ID}")
+    # One color for the example model: its bars are almost 0 outside the target, so a second color is not visible.
+    a1.bar(cls + 0.2, hm[m, p], 0.4, color=RED, label=f"model {EXAMPLE_ID} (backdoor)")
     a1.annotate(f"{hm[m, p, t]:.0%} of the images\ngo to c{t:02d} {names[t]}", (t + 0.2, hm[m, p, t]), (t + 2, 0.75),
                 fontsize=10, arrowprops={"arrowstyle": "->", "color": DARK})
     a1.set_xticks(cls, [f"c{c:02d} {names[c]}" for c in cls], fontsize=7.5, rotation=45, ha="right")
@@ -541,10 +533,8 @@ def run(out) -> None:
 
     fig_pipeline(x, y, probes, out)
     fig_classes(x, y, names, out)
-    fig_patches(x, y, probes, out)
     for name in FAMILIES:
-        if name != "patch":
-            fig_family(x, y, probes, name, out)
+        fig_family(x, y, probes, name, out)
     fig_triggers(x, y, out)
     labels = val_labels()
     summary["val_sets"] = fig_val_sets(labels, out)

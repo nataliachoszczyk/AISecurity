@@ -17,18 +17,9 @@ All models have the same base model, the same data and the same finetune. Many t
 
 Six train models are too few to train a detector. A simple check of the accuracy also does not help: a model with a backdoor recognizes clean images as well as a clean model (0.84-0.85 for all 6 train models).
 
-## Method
+## The probe bank
 
-The detector trains no network. It uses two ideas:
-
-1. **A backdoor is a wide shortcut.** The model learned the rule "pattern, so class X" from a few percent of the data. A similar pattern also activates this rule. Thus we do not need the exact trigger. We apply many different changes (probes) to clean images and look for a class that collects the images.
-2. **The models are siblings.** All task models have the same base, data and finetune. A clean class reacts to a probe almost the same in all models. Thus we compare each class with the same class in all other models. A backdoor class is far from all of them.
-
-![Flow](assets/pipeline.png)
-
-### The probe bank
-
-A probe is a function that changes a batch of images. The bank has 196 probes in 9 families. All random patterns come from the seed 0, so each model gets exactly the same probes.
+We do not know the triggers of the test models. Thus we use a fixed bank of possible triggers (probes). A probe is a function that changes a batch of images. The bank has 196 probes in 9 families. All random patterns come from the seed 0, so each model gets exactly the same probes.
 
 | Family | Probes | What it does | Similar attacks |
 |---|:---:|---|---|
@@ -42,41 +33,52 @@ A probe is a function that changes a batch of images. The bank has 196 probes in
 | Geometry | 5 | Flip, rotation, shift, zoom | transform triggers |
 | Replacements | 5 | The full image becomes noise, gray, black or white | strong backdoors |
 
-**Patches (120).** A square of 4, 8 or 12 pixels in a corner (`tl`, `tr`, `bl`, `br`) or in the `center`, with 6 colors, a checkerboard or noise. A patch is the most frequent trigger.
+Each family has three example probes below.
+
+**Patches (120).** Pastes a square of 4, 8 or 12 pixels into one of the 4 corners or into the center. Pattern: 6 colors, a checkerboard or noise.
 
 ![Patch probes](assets/probes_patch.png)
 
-**Blends (18).** The image is mixed with a full-size pattern (noise, smooth color, checkerboard, diagonal stripes) at 10%, 20% or 30%.
+**Blends (18).** Mixes the full image with a pattern: (1 − α)·image + α·pattern, where α = 0.1, 0.2 or 0.3. Patterns: 2 noises, 2 smooth color spots, a checkerboard, diagonal stripes.
 
 ![Blend probes](assets/probes_blend.png)
 
-**SIG stripes (16).** Horizontal or vertical sine stripes with 4 frequencies and 2 strengths.
+**SIG stripes (16).** Adds a sine wave: vertical or horizontal stripes with 4-12 periods on the image, with a strength of 0.06 or 0.12.
 
 ![SIG probes](assets/probes_sig.png)
 
-**Warps (6).** A smooth field moves the pixels by 1, 2 or 3 pixels. WaNet uses such an almost invisible warp.
+**Warps (6).** Moves the pixels a little along a smooth random field, by 1-3 pixels.
 
 ![Warp probes](assets/probes_warp.png)
 
-**Color changes (12).** Brighter, darker, more or less contrast, gray, inverted, channel swaps, more saturation and three color tints.
+**Color changes (12).** Changes the colors with a 3×3 matrix and a shift: brighter, darker, contrast, gray, negative, channel swap, saturation, tint.
 
 ![Color probes](assets/probes_color.png)
 
-**Lower quality (9).** Fewer color levels (like BPP), blur, down and up sampling, and Gaussian noise.
+**Lower quality (9).** Fewer brightness levels, blur, down and up sampling, Gaussian noise.
 
 ![Quality probes](assets/probes_quality.png)
 
-**Frequency patterns (5).** A fine checkerboard (like FTrojan) and smooth low-frequency color noise (like LF). These patterns are weak, so the example image is the flattest of the 400 images.
+**Frequency patterns (5).** A very fine checkerboard ±ε (high frequency) or a smooth spot (low frequency).
 
 ![Frequency probes](assets/probes_frequency.png)
 
-**Geometry (5).** Horizontal flip, vertical flip, rotation by 90°, shift by 8 pixels, zoom of 1.25×.
+**Geometry (5).** Horizontal and vertical flip, rotation by 90°, shift by 8 pixels, zoom ×1.25.
 
 ![Geometry probes](assets/probes_geo.png)
 
-**Replacements (5).** The full image becomes noise, gray, black or white. A clean model puts such an image into some class, and all models do this almost the same. A model with a strong backdoor can put it into the target class.
+**Replacements (5).** Replaces the full image: uniform noise, Gaussian noise, gray, black, white.
 
 ![Replacement probes](assets/probes_replace.png)
+
+## Method
+
+The detector trains no network. It uses two ideas:
+
+1. **A backdoor is a wide shortcut.** The model learned the rule "pattern, so class X" from a few percent of the data. A similar pattern also activates this rule. Thus we do not need the exact trigger. We apply the probes of the bank to clean images and look for a class that collects the images.
+2. **The models are siblings.** All task models have the same base, data and finetune. A clean class reacts to a probe almost the same in all models. Thus we compare each class with the same class in all other models. A backdoor class is far from all of them.
+
+![Flow](assets/pipeline.png)
 
 ### The scan of one model
 
@@ -146,7 +148,7 @@ Set A has the 6 trigger types that we used to design the probe bank. Set B has 7
 
 ### How we used them
 
-- **Only to reject a method.** Our models are made differently from the task models, so their score does not predict the leaderboard. Our first detector (trigger inversion) got 0.966 on A and 0.948 on B, but only 0.906 on the leaderboard.
+- **Only to reject a method.** Our models are made differently from the task models, so their score does not predict the leaderboard.
 - **40 models of each set.** 20 clean and 20 poisoned models are sufficient to reject a method.
 - **Each set separately.** A validation model is compared only with the models of its own set, because these models are siblings.
 - **Set A for the decisions.** We compared the parts for each trigger type. Each part has a weak group (blend or targeted). Their mean is never low.
