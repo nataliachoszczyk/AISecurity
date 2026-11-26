@@ -18,10 +18,17 @@ import torch
 
 from .data import find_root, load_records
 
-REFERENCE = "Qwen/Qwen3-0.6B-Base"
+REFERENCE = "qwen3-0.6b-base"  # the output folder of the job qwen-weights (Qwen/Qwen3-0.6B-Base)
 WINDOW, STRIDE = 2048, 1024  # S1 used pieces of 2048 tokens. The stride gives each token at least 1024 tokens of context.
 NOISE = {"noise02": 0.02, "noise10": 0.10}  # standard deviation of the pixel noise, in the [0, 1] pixel scale
 PHOTO_BATCH = 16
+
+
+def reference_path(base: str = "/kaggle/input") -> Path:
+    matches = [p.parent for p in Path(base).rglob("config.json") if p.parent.name == REFERENCE]
+    if len(matches) != 1:
+        raise FileNotFoundError(f"need exactly one {REFERENCE} folder below {base}, found {matches}")
+    return matches[0]
 
 
 def import_openbumas(root: Path):
@@ -156,10 +163,10 @@ def run(model_name: str, device: str, out_dir: str, limit: int | None = None) ->
         else:
             from transformers import AutoModelForCausalLM, AutoTokenizer
             tok = AutoTokenizer.from_pretrained(root / "model" / "llm")
-            ref_tok = AutoTokenizer.from_pretrained(REFERENCE)
+            ref_tok = AutoTokenizer.from_pretrained(reference_path())
             sample = texts["content"].head(50).tolist()
             assert all(tok(t)["input_ids"] == ref_tok(t)["input_ids"] for t in sample), "the tokenizers differ"
-            llm = AutoModelForCausalLM.from_pretrained(REFERENCE, dtype=torch.float32).to(device).eval()
+            llm = AutoModelForCausalLM.from_pretrained(reference_path(), dtype=torch.float32).to(device).eval()
             caption_text_pass(llm, tok, photos, device, out, "qwen_caption_text")
             text_pass(llm, tok, texts, device, out, "qwen_text")
     except Exception:
