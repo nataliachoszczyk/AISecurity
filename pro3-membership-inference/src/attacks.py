@@ -511,3 +511,117 @@ def explore_v5(out_dir: str) -> None:
     test = data["split"] == "test"
     pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / "submission.csv", index=False)
     print(data.loc[test].assign(p=1 / (1 + np.exp(-score[test]))).groupby("source_type")["p"].agg(["mean", "sum"]).round(3))
+
+
+def find_folder(file_name: str, base: str = "/kaggle/input") -> Path:
+    matches = sorted({p.parent for p in Path(base).rglob(file_name)})
+    if len(matches) != 1:
+        raise FileNotFoundError(f"need exactly one folder with {file_name} below {base}, found {matches}")
+    return matches[0]
+
+
+def lira_features(lp_t: np.ndarray, lp_in: np.ndarray, lp_out: np.ndarray, prefix: str) -> dict:
+    """LiRA with one IN and one OUT shadow model for each token.
+
+    g: gain of the target over the OUT model. m: gain of one training exposure (IN over OUT).
+    With equal variances, the log-likelihood ratio of IN against OUT for one token is m * (2g - m) / (2 var).
+    """
+    g, m = lp_t - lp_out, lp_in - lp_out
+    m_pos = np.maximum(m, 0)
+    return {
+        f"{prefix}_gain": g.mean(),
+        f"{prefix}_llr": (m * (2 * g - m)).mean(),
+        f"{prefix}_wgain": float((g * m_pos).sum() / max(m_pos.sum(), 1e-6)),
+        f"{prefix}_slope": float((g * m).sum() / max((m * m).sum(), 1e-6)),
+        f"{prefix}_corr": float(np.corrcoef(g, m)[0, 1]) if len(g) > 2 and g.std() > 0 and m.std() > 0 else 0.0,
+    }
+
+
+def domain_features(lp_t: np.ndarray, lp_d: np.ndarray, prefix: str) -> dict:
+    """Gain of the target over the reference model for the domain."""
+    d = lp_t - lp_d
+    return {f"{prefix}": d.mean(), f"{prefix}_low20": lowest_mean(d, 0.2), f"{prefix}_gain_frac": float((d > 0).mean())}
+
+
+def v6_features(records: pd.DataFrame) -> pd.DataFrame:
+    """Features from the domain reference models (job refmodel) and the shadow models (job shadow)."""
+    from .validation import make_folds
+    base, ref_dir, shadow_dir = find_passes(), find_folder("ref0_text.npz"), find_folder("shadow0_text.npz")
+    by_id = records.set_index("id")
+    known = records[records["split"] == "known"]
+    ref_fold = pd.Series(make_folds(known, 2, seed=0), index=known["id"])  # the folds of the job refmodel
+    half = pd.read_csv(shadow_dir / "shadow_halves.csv").set_index("id")["half"]
+    tables = []
+    for kind, target_names in [("text", ["bumas_text"]), ("caption", ["bumas_caption_text", "bumas_photo_own"])]:
+        suffix = "text" if kind == "text" else "caption_text"
+        ids, ref = zip(*[load_pass(ref_dir, f"ref{f}_{suffix}") for f in (0, 1)])
+        _, shadow = zip(*[load_pass(shadow_dir, f"shadow{h}_{suffix}") for h in (0, 1)])
+        targets = {name: load_pass(base, name) for name in target_names}
+        for name, (t_ids, _) in targets.items():
+            assert t_ids.equals(ids[0]), name
+        rows = []
+        for i, rid in enumerate(ids[0]):
+            row = {}
+            # A known record gets the reference model of the other fold. A test record gets the mean of both.
+            if by_id.loc[rid, "split"] == "known":
+                lp_d = ref[1 - ref_fold[rid]][i]["lp"]
+            else:
+                lp_d = (ref[0][i]["lp"] + ref[1][i]["lp"]) / 2
+            h = half[rid]
+            lp_in, lp_out = shadow[h][i]["lp"], shadow[1 - h][i]["lp"]
+            for name, (_, t_rows) in targets.items():
+                tag = "own" if name == "bumas_photo_own" else "txt"
+                prefix = "dom" if kind == "text" else f"dom_{tag}"
+                lira = "lira" if kind == "text" else f"lira_{tag}"
+                row.update(domain_features(t_rows[i]["lp"], lp_d, prefix))
+                row.update(lira_features(t_rows[i]["lp"], lp_in, lp_out, lira))
+            row["shadow_m"] = (lp_in - lp_out).mean()
+            rows.append(row)
+        tables.append(pd.DataFrame(rows, index=ids[0]))
+    return pd.concat(tables).reindex(records["id"]).set_axis(records.index)
+
+
+V6_TEXT = ["dom", "dom_low20", "dom_gain_frac"] + [f"lira_{s}" for s in ("gain", "llr", "wgain", "slope", "corr")] + ["shadow_m"]
+V6_PHOTO = [f"dom_{t}{s}" for t in ("txt", "own") for s in ("", "_low20", "_gain_frac")] + \
+           [f"lira_{t}_{s}" for t in ("txt", "own") for s in ("gain", "llr", "wgain", "slope", "corr")] + ["shadow_m"]
+
+
+def v6_columns_of(source_type: str) -> list[str]:
+    return PHOTO_COLUMNS + V6_PHOTO if source_type in ("photographer", "web photo") else TEXT_COLUMNS + V6_TEXT
+
+
+def explore_v6(out_dir: str) -> None:
+    """The new features alone, the validation of the record score and of the two-stage score, and the submission file."""
+    from .data import find_root, load_records
+    from .metrics import auc, tpr_at_5fpr
+    from .validation import cross_validate, summarize
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    pd.set_option("display.width", 200)
+    records = load_records(find_root())
+    data = pd.concat([records, all_features(find_passes(), records), v6_features(records)], axis=1)
+    data.drop(columns=["text", "caption", "title", "content", "image", "image_path"], errors="ignore").to_csv(
+        out / "features_v6.csv", index=False)
+    known = data[data["split"] == "known"].copy()
+    known["member"] = known["member"].astype(int)
+    rows = []
+    for source_type, part in known.groupby("source_type"):
+        cols = V6_PHOTO if source_type in ("photographer", "web photo") else V6_TEXT
+        for col in cols:
+            rows.append({"source_type": source_type, "feature": col, "AUC": auc(part[col], part["member"]),
+                         "TPR@5%FPR": tpr_at_5fpr(part[col].tolist(), part["member"].tolist())})
+    single = pd.DataFrame(rows).round(3)
+    single.to_csv(out / "single_v6.csv", index=False)
+    print(single.to_string(), flush=True)
+    variants = {"record v1": logistic_score(columns_of), "record v6": logistic_score(v6_columns_of),
+                "record v6 C=0.1": logistic_score(v6_columns_of, C=0.1)}
+    results = pd.concat([cross_validate(known, fn).assign(variant=name) for name, fn in variants.items()])
+    table = pd.concat([summarize(r).assign(variant=name) for name, r in results.groupby("variant", sort=False)])
+    table.to_csv(out / "cv_v6.csv", index=False)
+    print(table.round(3).to_string(), flush=True)
+    two = two_stage_cross_validate(data, v6_columns_of)
+    two.to_csv(out / "two_stage_v6.csv")
+    print(two.to_string(), flush=True)
+    score = two_stage(data, data.index[data["split"] == "known"], v6_columns_of, "test")
+    test = data["split"] == "test"
+    pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / "submission_v6.csv", index=False)
