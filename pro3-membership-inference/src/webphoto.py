@@ -186,3 +186,138 @@ def explore_v1(out_dir: str) -> None:
     table = run_cv(known, variants)
     table.to_csv(out / "cv.csv", index=False)
     logodds_all(data, lr_score(BASE)).to_csv(out / "logodds_base.csv", index=False)
+
+
+GROUP = 32  # photos of one ranking group: each caption is scored with each photo of its group
+PAIR_BATCH = 32
+OWN_BATCH = 8  # the pass with all logits and hidden states needs more memory
+ALPHAS = (0.5, 1.0, 2.0, np.inf)  # orders of the Renyi entropy (MaxRenyi-K%, Li et al. 2024)
+LAYERS = (14, 28)
+
+
+def ranking_groups(n: int, seed: int = 0) -> list[np.ndarray]:
+    idx = np.random.default_rng(seed).permutation(n)
+    return np.array_split(idx, max(1, int(np.ceil(n / GROUP))))
+
+
+def batch_inputs(model, img, encoded, device):
+    """Input embeddings with the image tokens in place, the attention mask and the caption labels."""
+    import torch
+    pad = model.tok.pad_token_id
+    width = max(len(ids) for ids, _ in encoded)
+    input_ids = torch.tensor([ids + [pad] * (width - len(ids)) for ids, _ in encoded], device=device)
+    labels = torch.tensor([lab + [-100] * (width - len(lab)) for _, lab in encoded], device=device)
+    mask = torch.tensor([[1] * len(ids) + [0] * (width - len(ids)) for ids, _ in encoded], device=device)
+    emb = model.llm.get_input_embeddings()(input_ids)
+    emb = emb.masked_scatter((input_ids == model.image_pad_id).unsqueeze(-1), img.to(emb.dtype).reshape(-1, emb.shape[-1]))
+    return input_ids, emb, mask, labels
+
+
+def caption_lp(model, img, encoded, device):
+    """Sum of log p of the caption tokens for each (image, caption) pair. The lm head runs only on the caption positions."""
+    import torch
+    _, emb, mask, labels = batch_inputs(model, img, encoded, device)
+    h = model.llm.model(inputs_embeds=emb, attention_mask=mask).last_hidden_state[:, :-1]
+    target = labels[:, 1:]
+    sel = target != -100
+    logp = torch.log_softmax(model.llm.lm_head(h[sel]).float(), -1).gather(-1, target[sel][:, None])[:, 0]
+    rows = sel.nonzero()[:, 0]
+    return torch.zeros(len(encoded), device=device).index_add_(0, rows, logp).cpu().numpy()
+
+
+def renyi(logp, alpha: float):
+    import torch
+    if alpha == 1.0:
+        return -(logp.exp() * logp).sum(-1)
+    if np.isinf(alpha):
+        return -logp.max(-1).values
+    return torch.logsumexp(alpha * logp, -1) / (1 - alpha)
+
+
+def own_pass(model, img, encoded, device) -> tuple[list[dict], dict]:
+    """Target-free entropies of the image positions and of the caption positions, and the mean hidden states."""
+    import torch
+    input_ids, emb, mask, labels = batch_inputs(model, img, encoded, device)
+    out = model.llm(inputs_embeds=emb, attention_mask=mask, output_hidden_states=True)
+    image_pos = input_ids == model.image_pad_id
+    caption_pos = labels != -100
+    rows, hidden = [], {f"{part}_l{layer}": [] for part in ("img", "cap") for layer in LAYERS}
+    for b in range(len(encoded)):
+        n = int(mask[b].sum())
+        logp = torch.log_softmax(out.logits[b, :n].float(), -1)
+        predicts_caption = torch.zeros(n, dtype=torch.bool, device=logp.device)
+        predicts_caption[:n - 1] = caption_pos[b, 1:n]
+        regions = {"img": image_pos[b, :n], "cap": predicts_caption}
+        row = {}
+        for region, sel in regions.items():
+            for alpha in ALPHAS:
+                h = renyi(logp[sel], alpha)
+                row[f"renyi_{region}_{alpha}"] = h.mean().item()
+                row[f"renyi_{region}_{alpha}_max"] = h.max().item()
+        rows.append(row)
+        for layer in LAYERS:
+            hs = out.hidden_states[layer][b].float()
+            hidden[f"img_l{layer}"].append(hs[image_pos[b]].mean(0).cpu().numpy())
+            hidden[f"cap_l{layer}"].append(hs[caption_pos[b]].mean(0).cpu().numpy())
+    return rows, hidden
+
+
+def run_matrix(source_type: str, device: str, out_dir: str, limit: int | None = None) -> None:
+    """For each ranking group: log p of each caption with each photo, the own caption with the flipped photo,
+    and the target-free features of the own pairs. One output set for each source type."""
+    import time
+    import traceback
+
+    import torch
+    from .data import find_root, load_records
+    from .logprobs import import_openbumas
+    torch.cuda.set_device(device)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    tag = source_type.replace(" ", "_")
+    try:
+        root = find_root()
+        ob = import_openbumas(root)
+        records = load_records(root)
+        photos = records[records["source_type"] == source_type].reset_index(drop=True)
+        if limit:
+            photos = photos.head(limit)
+        model = ob.BUMASMini.load(root / "model", dtype=torch.float32).to(device).eval()
+        encoded = [ob.caption_example(model.tok, c) for c in photos["caption"].fillna("")]
+        pairs, own_rows, conn = [], [], []
+        hidden = None
+        t0 = time.time()
+        with torch.no_grad():
+            for g, members in enumerate(ranking_groups(len(photos))):
+                pixels = torch.stack([ob.load_image(p) for p in photos["image_path"].iloc[members]]).to(device)
+                img = model.encode_images(pixels)
+                img_flip = model.encode_images(pixels.flip(-1))
+                ii, jj = [a.ravel() for a in np.meshgrid(np.arange(len(members)), np.arange(len(members)), indexing="ij")]
+                for s in range(0, len(ii), PAIR_BATCH):
+                    i, j = ii[s:s + PAIR_BATCH], jj[s:s + PAIR_BATCH]
+                    lp = caption_lp(model, img[i], [encoded[members[k]] for k in j], device)
+                    pairs += [(g, members[a], members[b], v) for a, b, v in zip(i, j, lp)]
+                own_enc = [encoded[m] for m in members]
+                flip = np.concatenate([caption_lp(model, img_flip[s:s + PAIR_BATCH], own_enc[s:s + PAIR_BATCH], device)
+                                       for s in range(0, len(members), PAIR_BATCH)])
+                for s in range(0, len(members), OWN_BATCH):
+                    rows, h = own_pass(model, img[s:s + OWN_BATCH], own_enc[s:s + OWN_BATCH], device)
+                    own_rows += rows
+                    hidden = h if hidden is None else {k: hidden[k] + h[k] for k in h}
+                conn += list(img.float().mean(1).cpu().numpy())
+                for a, m in enumerate(members):
+                    own_rows[-len(members) + a].update(id=photos["id"].iloc[m], group=g, n_tokens=sum(x != -100 for x in encoded[m][1]),
+                                                       lp_flip=float(flip[a]))
+                if g % 10 == 0:
+                    print(f"{source_type}: group {g}, {time.time() - t0:.0f} s", flush=True)
+        ids = photos["id"].to_numpy()
+        pd.DataFrame([(ids[i], ids[j], g, v) for g, i, j, v in pairs], columns=["image_id", "caption_id", "group", "lp"]).to_csv(
+            out / f"pairs_{tag}.csv", index=False)
+        pd.DataFrame(own_rows).to_csv(out / f"own_{tag}.csv", index=False)
+        order = [r["id"] for r in own_rows]
+        np.savez(out / f"hidden_{tag}.npz", ids=np.asarray(order), conn=np.asarray(conn, dtype=np.float16),
+                 **{k: np.asarray(v, dtype=np.float16) for k, v in hidden.items()})
+        print(f"{source_type}: done in {time.time() - t0:.0f} s", flush=True)
+    except Exception:
+        traceback.print_exc()
+        (out / f"error_{tag}.txt").write_text(traceback.format_exc())
