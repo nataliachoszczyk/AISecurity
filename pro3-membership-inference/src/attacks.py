@@ -210,6 +210,25 @@ def combined_score(record_columns, owner: bool, prior: bool, C: float = 1.0):
     return score
 
 
+def owner_check(data: pd.DataFrame) -> pd.DataFrame:
+    """Mean of the main feature over the known and the test records of each owner group.
+
+    Groups: victims (known members), owners with as many known records as a victim but no member, and the other owners.
+    If a group has members only in test, its test mean is higher than its known mean.
+    """
+    sets = data[data["source_type"].isin(SET_TYPES)].copy()
+    sets["main"] = sets["ref"].where(sets["kind"] == "text", sets["ref_img"])
+    known = sets[sets["split"] == "known"]
+    members = known.groupby("source")["member"].sum()
+    n_known = known.groupby("source").size()
+    full = n_known.groupby(known.groupby("source")["source_type"].first()).transform("max")
+    group = pd.Series("other", index=members.index).mask(n_known == full, "full, no member").mask(members > 0, "victim")
+    sets["group"] = sets["source"].map(group)
+    sets["main_z"] = sets.groupby("source_type")["main"].transform(lambda v: (v - v.mean()) / v.std())
+    per_owner = sets.groupby(["source_type", "group", "source", "split"])["main_z"].mean().unstack("split")
+    return per_owner.groupby(["source_type", "group"]).agg(["mean", "std", "min", "max"]).round(3).reset_index()
+
+
 def explore(out_dir: str) -> None:
     """Write the features, the score of each feature alone and the validation of the combined scores."""
     from .data import find_root, load_records
@@ -225,6 +244,9 @@ def explore(out_dir: str) -> None:
     single = single_features(known)
     single.to_csv(out / "single_features.csv", index=False)
     print(single.sort_values(["source_type", "TPR@5%FPR"], ascending=[True, False]).to_string(), flush=True)
+    owners = owner_check(data)
+    owners.to_csv(out / "owner_check.csv", index=False)
+    print(owners.to_string(), flush=True)
     if known.groupby("source_type")["member"].sum().min() < 10:
         print("too few members for the validation (smoke test)")
         return
