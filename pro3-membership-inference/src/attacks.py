@@ -45,6 +45,24 @@ def z_tokens(r: dict) -> np.ndarray:
     return (r["lp"] - r["mu"]) / np.maximum(r["sigma"], 1e-6)
 
 
+QUANTILES = [0.05, 0.1, 0.25, 0.5, 0.75, 0.9]
+# Bins of the reference log p. Training changes hard (rare) tokens more than easy tokens.
+DIFFICULTY_BINS = [-np.inf, -8, -4, -2, -1, -0.25, 0]
+
+
+def diff_features(d: np.ndarray, lp_ref: np.ndarray, prefix: str) -> dict:
+    """The distribution of the per-token gain d = log p(target) - log p(reference) of one record."""
+    out = {f"{prefix}_q{int(q * 100):02d}": v for q, v in zip(QUANTILES, np.quantile(d, QUANTILES))}
+    out[f"{prefix}_big_gain"] = float((d > 1).mean())
+    out[f"{prefix}_big_loss"] = float((d < -1).mean())
+    which = np.digitize(lp_ref, DIFFICULTY_BINS[1:-1])
+    for b in range(len(DIFFICULTY_BINS) - 1):
+        sel = which == b
+        # A bin without tokens gets 0: no gain is known.
+        out[f"{prefix}_bin{b}"] = float(d[sel].mean()) if sel.any() else 0.0
+    return out
+
+
 def text_features(folder: Path, records: pd.DataFrame) -> pd.DataFrame:
     """Features of the text records. T: BUMAS-mini, R: the reference model Qwen3-0.6B-Base."""
     ids, target = load_pass(folder, "bumas_text")
@@ -69,6 +87,7 @@ def text_features(folder: Path, records: pd.DataFrame) -> pd.DataFrame:
             "ref_gain_frac": float((d > 0).mean()),
             "ref_minkpp": (zt - zr).mean(),
             "n_tokens": len(t["lp"]),
+            **diff_features(d, r["lp"], "d"),
         })
     return pd.DataFrame(rows, index=ids)
 
@@ -104,6 +123,8 @@ def photo_features(folder: Path) -> pd.DataFrame:
             "noise02_kl": -n02["kl"].mean(),
             "noise10_kl": -n10["kl"].mean(),
             "n_tokens": len(o["lp"]),
+            **diff_features(o["lp"] - q["lp"], q["lp"], "do"),
+            **diff_features(c["lp"] - q["lp"], q["lp"], "dc"),
         })
     return pd.DataFrame(rows, index=ids)
 
@@ -261,3 +282,92 @@ def explore(out_dir: str) -> None:
     table = pd.concat([summarize(r).assign(variant=name) for name, r in results.groupby("variant", sort=False)])
     table.to_csv(out / "cv.csv", index=False)
     print(table.to_string(), flush=True)
+
+
+def diff_names(prefix: str) -> list[str]:
+    return list(diff_features(np.zeros(4), np.zeros(4), prefix))
+
+
+TEXT_RICH = TEXT_COLUMNS + diff_names("d")
+PHOTO_RICH = PHOTO_COLUMNS + diff_names("do") + diff_names("dc")
+
+
+def rich_columns_of(source_type: str) -> list[str]:
+    return PHOTO_RICH if source_type in ("photographer", "web photo") else TEXT_RICH
+
+
+def boosting_score(columns):
+    """Gradient boosting for each source type. Only a check of the headroom over the logistic regression."""
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    def score(fit, evaluate):
+        out = pd.Series(0.0, index=evaluate.index)
+        for source_type, part in evaluate.groupby("source_type"):
+            cols = columns(source_type)
+            train = fit[fit["source_type"] == source_type]
+            model = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_leaf_nodes=15, random_state=0)
+            model.fit(train[cols], train["member"])
+            out.loc[part.index] = model.decision_function(part[cols])
+        return out.to_numpy()
+    return score
+
+
+def owner_groups(data: pd.DataFrame) -> pd.Series:
+    """Group of each record: single, victim, full (known records as a victim, no member) or other."""
+    known = data[data["split"] == "known"]
+    members = known.groupby("source")["member"].sum()
+    n_known = known.groupby("source").size()
+    full = n_known.groupby(known.groupby("source")["source_type"].first()).transform("max")
+    group = pd.Series("other", index=members.index).mask(n_known == full, "full").mask(members > 0, "victim")
+    return data["source"].map(group).where(data["source_type"].isin(SET_TYPES), "single")
+
+
+def test_estimates(data: pd.DataFrame, C: float = 0.1) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Expected members in test from a logistic regression on all known records, for each source type and group.
+
+    The second table counts the owners by the mean member probability of their test records.
+    """
+    data = data.assign(group=owner_groups(data), p=np.nan)
+    for source_type, part in data.groupby("source_type"):
+        cols = rich_columns_of(source_type)
+        train = part[part["split"] == "known"]
+        model = make_pipeline(StandardScaler(), LogisticRegression(C=C, max_iter=2000))
+        model.fit(train[cols], train["member"].astype(int))
+        data.loc[part.index, "p"] = model.predict_proba(part[cols])[:, 1]
+    test = data[data["split"] == "test"]
+    by_group = test.groupby(["source_type", "group"]).agg(records=("p", "size"), expected_members=("p", "sum"),
+                                                          above_half=("p", lambda p: int((p > 0.5).sum())))
+    owners = test[test["group"] != "single"].groupby(["source_type", "group", "source"])["p"].mean()
+    bins = pd.cut(owners, [0, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0])
+    by_owner = owners.groupby([owners.index.get_level_values(0), owners.index.get_level_values(1), bins],
+                              observed=True).size().unstack(fill_value=0)
+    return by_group.round(1).reset_index(), by_owner.reset_index()
+
+
+def explore_v2(out_dir: str) -> None:
+    """Rich features of the token gains, the validation of the record scores, and the estimates for test."""
+    from .data import find_root, load_records
+    from .validation import cross_validate, summarize
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    records = load_records(find_root())
+    feats = all_features(find_passes(), records)
+    feats.assign(id=records["id"]).to_csv(out / "features.csv", index=False)
+    data = pd.concat([records, feats.drop(columns="n_tokens")], axis=1)
+    known = data[data["split"] == "known"].copy()
+    known["member"] = known["member"].astype(int)
+    pd.set_option("display.width", 200)
+    for name, table in zip(["test_by_group", "test_by_owner"], test_estimates(data)):
+        table.to_csv(out / f"{name}.csv", index=False)
+        print(table.to_string(), flush=True)
+    variants = {
+        "record v1": logistic_score(columns_of, C=1.0),
+        "record rich C=1": logistic_score(rich_columns_of, C=1.0),
+        "record rich C=0.1": logistic_score(rich_columns_of, C=0.1),
+        "record rich boosting": boosting_score(rich_columns_of),
+    }
+    results = pd.concat([cross_validate(known, fn).assign(variant=name) for name, fn in variants.items()])
+    results.to_csv(out / "cv_folds.csv", index=False)
+    table = pd.concat([summarize(r).assign(variant=name) for name, r in results.groupby("variant", sort=False)])
+    table.to_csv(out / "cv.csv", index=False)
+    print(table.round(3).to_string(), flush=True)
