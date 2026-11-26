@@ -731,3 +731,86 @@ def explore_v8(out_dir: str, shadow_names=("shadow",)) -> None:
     expected.to_csv(out / "test_expected_v8.csv")
     print(expected.to_string(), flush=True)
     pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / "submission_v8.csv", index=False)
+
+
+def weighted_tpr_at_5fpr(scores: np.ndarray, labels: np.ndarray, weights: np.ndarray) -> tuple[float, float]:
+    """TPR@5%FPR when each record counts with a weight. Also return the score threshold."""
+    order = np.argsort(-scores)
+    s, y, w = scores[order], labels[order], weights[order]
+    fpr = np.cumsum(w * (1 - y)) / (w * (1 - y)).sum()
+    tpr = np.cumsum(w * y) / (w * y).sum()
+    last = np.searchsorted(fpr, 0.05, side="right") - 1
+    return (float(tpr[last]), float(s[last])) if last >= 0 else (0.0, np.inf)
+
+
+def test_like_weights(known: pd.DataFrame, expected: pd.Series, test_counts: pd.Series) -> np.ndarray:
+    """Weights that give each source type its expected number of members and non-members in test."""
+    w = np.empty(len(known))
+    for source_type, part in known.groupby("source_type"):
+        pos = known.index.get_indexer(part.index)
+        m = part["member"].to_numpy()
+        w_member = expected[source_type] / m.sum()
+        w_other = (test_counts[source_type] - expected[source_type]) / (len(m) - m.sum())
+        w[pos] = np.where(m == 1, w_member, w_other)
+    return w
+
+
+def owner_prior_shift(data: pd.DataFrame, logodds: pd.Series, split: str, w: float, a: float = 5.0) -> pd.Series:
+    """Replace the prior of the source type in the record log-odds with the prior of the owner.
+
+    The prior of the owner is the mean member probability of its other records in one split, shrunk to the type mean
+    with a records. Single records do not change.
+    """
+    p = 1 / (1 + np.exp(-logodds))
+    in_split = (data["split"] == split).astype(float)
+    total = (p * in_split).groupby(data["source"]).transform("sum") - p * in_split
+    count = in_split.groupby(data["source"]).transform("sum") - in_split
+    type_p = (p * in_split).groupby(data["source_type"]).transform("sum") / in_split.groupby(data["source_type"]).transform("sum")
+    owner_p = ((total + a * type_p) / (count + a)).clip(0.01, 0.99)
+    shift = np.log(owner_p / (1 - owner_p)) - np.log(type_p / (1 - type_p))
+    return logodds + w * shift.where(data["source_type"].isin(SET_TYPES), 0.0)
+
+
+def explore_v9(out_dir: str, shadow_names=("shadow",), weights=(0.0, 0.5, 1.0)) -> None:
+    """Simulation of the test metric on known, and the owner prior for the set types.
+
+    Known records get weights, so that each source type has its expected test mix of members and non-members.
+    For known, the owner prior comes from the other known records of the owner. For test, it comes from the test records.
+    """
+    from .data import find_root, load_records
+    from .validation import make_folds
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    pd.set_option("display.width", 200)
+    records = load_records(find_root())
+    data = pd.concat([records, all_features(find_passes(), records), v6_features(records, shadow_names)], axis=1)
+    known_index = data.index[data["split"] == "known"]
+    test = data["split"] == "test"
+    full = record_logodds(data, known_index, v6_columns_of)
+    expected = (1 / (1 + np.exp(-full[test]))).groupby(data.loc[test, "source_type"]).sum()
+    test_counts = data.loc[test, "source_type"].value_counts()
+    known = data.loc[known_index].assign(member=lambda d: d["member"].astype(int))
+    sample_w = test_like_weights(known, expected, test_counts)
+    rows = []
+    for seed in range(5):
+        fold = make_folds(known, 2, seed)
+        for f in range(2):
+            logodds = record_logodds(data, known_index[fold != f], v6_columns_of)
+            ev = known_index[fold == f]
+            labels, sw = known.loc[ev, "member"].to_numpy(), sample_w[fold == f]
+            for w in weights:
+                score = owner_prior_shift(data, logodds, "known", w).loc[ev].to_numpy()
+                tpr, threshold = weighted_tpr_at_5fpr(score, labels, sw)
+                row = {"seed": seed, "fold": f, "w": w, "all": tpr}
+                types = known.loc[ev, "source_type"].to_numpy()
+                for t in np.unique(types):
+                    sel = types == t
+                    row[f"tpr {t}"] = (score[sel & (labels == 1)] >= threshold).mean()
+                    row[f"fp {t}"] = (sw[sel & (labels == 0)] * (score[sel & (labels == 0)] >= threshold)).sum()
+                rows.append(row)
+    table = pd.DataFrame(rows).drop(columns=["seed", "fold"]).groupby("w").agg(["mean", "std"]).round(3)
+    table.to_csv(out / "sim_v9.csv")
+    print(table.T.to_string(), flush=True)
+    for w in weights:
+        score = owner_prior_shift(data, full, "test", w)
+        pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / f"submission_v9_w{w}.csv", index=False)
