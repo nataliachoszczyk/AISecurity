@@ -1,0 +1,146 @@
+"""MIA features of each record from the per-token values of src/logprobs.py, and the scores that combine them.
+
+A larger feature value means a stronger suspicion that the record is a member.
+"""
+import zlib
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+SET_TYPES = ["writer", "research group", "podcast", "photographer"]
+
+
+def find_passes(base: str = "/kaggle/input") -> Path:
+    matches = sorted({p.parent for p in Path(base).rglob("bumas_text.npz")})
+    if len(matches) != 1:
+        raise FileNotFoundError(f"need exactly one folder with bumas_text.npz below {base}, found {matches}")
+    return matches[0]
+
+
+def load_pass(folder: Path, name: str) -> tuple[pd.Index, list[dict]]:
+    """Return the record ids and, for each record, its per-token arrays."""
+    z = np.load(folder / f"{name}.npz")
+    off = z["offsets"]
+    keys = [k for k in z.files if k not in ("ids", "offsets")]
+    arrays = {k: z[k] for k in keys}
+    rows = [{k: arrays[k][a:b] for k in keys} for a, b in zip(off[:-1], off[1:])]
+    return pd.Index(z["ids"]), rows
+
+
+def lowest_mean(x: np.ndarray, k: float) -> float:
+    """Mean of the lowest fraction k of the values (Min-K%)."""
+    return float(np.sort(x)[:max(1, int(len(x) * k))].mean())
+
+
+def highest_mean(x: np.ndarray, k: float) -> float:
+    return -lowest_mean(-x, k)
+
+
+def z_tokens(r: dict) -> np.ndarray:
+    """Min-K%++ value of each token: log p of the token, normalized with the distribution of the vocabulary."""
+    return (r["lp"] - r["mu"]) / np.maximum(r["sigma"], 1e-6)
+
+
+def text_features(folder: Path, records: pd.DataFrame) -> pd.DataFrame:
+    """Features of the text records. T: BUMAS-mini, R: the reference model Qwen3-0.6B-Base."""
+    ids, target = load_pass(folder, "bumas_text")
+    ids_r, ref = load_pass(folder, "qwen_text")
+    assert ids.equals(ids_r)
+    content = records.set_index("id").loc[ids, "content"]
+    rows = []
+    for t, r, text in zip(target, ref, content):
+        d = t["lp"] - r["lp"]
+        zt, zr = z_tokens(t), z_tokens(r)
+        loss_t, loss_r = -t["lp"].mean(), -r["lp"].mean()
+        rows.append({
+            "loss": -loss_t,
+            "zlib": -loss_t * len(t["lp"]) / len(zlib.compress(text.encode())),
+            "mink20": lowest_mean(t["lp"], 0.2),
+            "minkpp20": lowest_mean(zt, 0.2),
+            "ref": d.mean(),
+            "ref_ratio": -loss_t / loss_r,
+            "ref_median": float(np.median(d)),
+            "ref_top20": highest_mean(d, 0.2),
+            "ref_low20": lowest_mean(d, 0.2),
+            "ref_gain_frac": float((d > 0).mean()),
+            "ref_minkpp": (zt - zr).mean(),
+            "n_tokens": len(t["lp"]),
+        })
+    return pd.DataFrame(rows, index=ids)
+
+
+def photo_features(folder: Path) -> pd.DataFrame:
+    """Features of the photo records.
+
+    O: BUMAS-mini with its own photo, S: with the photo of a different record, C: the LLM of BUMAS-mini without a photo,
+    Q: Qwen3-0.6B-Base without a photo, N02 and N10: with a noised own photo.
+    """
+    passes = {}
+    ids = None
+    for key, name in [("O", "bumas_photo_own"), ("S", "bumas_photo_swap"), ("C", "bumas_caption_text"),
+                      ("Q", "qwen_caption_text"), ("N02", "bumas_photo_noise02"), ("N10", "bumas_photo_noise10")]:
+        pass_ids, passes[key] = load_pass(folder, name)
+        assert ids is None or ids.equals(pass_ids)
+        ids = pass_ids
+    rows = []
+    for i in range(len(ids)):
+        o, s, c, q = (passes[k][i] for k in "OSCQ")
+        n02, n10 = passes["N02"][i], passes["N10"][i]
+        rows.append({
+            "loss": o["lp"].mean(),
+            "minkpp20": lowest_mean(z_tokens(o), 0.2),
+            "ref_img": (o["lp"] - q["lp"]).mean(),
+            "ref_txt": (c["lp"] - q["lp"]).mean(),
+            "txt_minkpp": (z_tokens(c) - z_tokens(q)).mean(),
+            "img_gain": (o["lp"] - s["lp"]).mean(),
+            "img_gain_top20": highest_mean(o["lp"] - s["lp"], 0.2),
+            "img_vs_txt": (o["lp"] - c["lp"]).mean(),
+            "noise02_drop": (o["lp"] - n02["lp"]).mean(),
+            "noise10_drop": (o["lp"] - n10["lp"]).mean(),
+            "noise02_kl": -n02["kl"].mean(),
+            "noise10_kl": -n10["kl"].mean(),
+            "n_tokens": len(o["lp"]),
+        })
+    return pd.DataFrame(rows, index=ids)
+
+
+def all_features(folder: Path, records: pd.DataFrame) -> pd.DataFrame:
+    """One table for all records, in the order of `records`. Columns of the other kind are empty."""
+    feats = pd.concat([text_features(folder, records), photo_features(folder)])
+    return feats.reindex(records["id"]).set_axis(records.index)
+
+
+def owner_means(records: pd.DataFrame, values: pd.Series) -> pd.Series:
+    """Mean of a value over all records of the owner (known and test). Single records keep their own value.
+
+    It uses no label, so it is the same in the validation and for test.
+    """
+    return values.groupby(records["source"]).transform("mean")
+
+
+def owner_prior(fit: pd.DataFrame, records: pd.DataFrame) -> pd.Series:
+    """Fraction of known members of the owner in the fit part. 0 for an owner without fit records."""
+    rate = fit.groupby("source")["member"].mean()
+    return records["source"].map(rate).fillna(0.0)
+
+
+def logistic_score(columns, C: float = 1.0):
+    """A score function for src/validation.py: one logistic regression for each source type.
+
+    The fit and the evaluate parts must have the feature columns. The output is the log-odds, so all source types
+    share one scale.
+    """
+    def score(fit: pd.DataFrame, evaluate: pd.DataFrame) -> np.ndarray:
+        out = pd.Series(0.0, index=evaluate.index)
+        for source_type, part in evaluate.groupby("source_type"):
+            cols = columns(source_type) if callable(columns) else columns
+            train = fit[fit["source_type"] == source_type]
+            model = make_pipeline(StandardScaler(), LogisticRegression(C=C, max_iter=1000))
+            model.fit(train[cols], train["member"])
+            out.loc[part.index] = model.decision_function(part[cols])
+        return out.to_numpy()
+    return score
