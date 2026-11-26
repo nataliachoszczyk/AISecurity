@@ -34,6 +34,7 @@ kaggle.json
 **/jobs/runs/*/output/**/*.npz
 **/jobs/runs/*/output/**/*.png
 **/jobs/runs/*/output/**/*.log
+**/jobs/runs/*/output/**/*.html
 **/jobs/runs/*/output/**/submission_*.csv
 
 # pro2: the large raw tables of the model EDA stay local
