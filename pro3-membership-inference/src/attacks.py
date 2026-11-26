@@ -371,3 +371,81 @@ def explore_v2(out_dir: str) -> None:
     table = pd.concat([summarize(r).assign(variant=name) for name, r in results.groupby("variant", sort=False)])
     table.to_csv(out / "cv.csv", index=False)
     print(table.round(3).to_string(), flush=True)
+
+
+def record_logodds(data: pd.DataFrame, fit_index, columns, C: float = 1.0) -> pd.Series:
+    """Log-odds of each record from one logistic regression for each source type, fit on the records fit_index."""
+    out = pd.Series(np.nan, index=data.index)
+    fit = data.loc[fit_index]
+    for source_type, part in data.groupby("source_type"):
+        cols = columns(source_type)
+        train = fit[fit["source_type"] == source_type]
+        model = make_pipeline(StandardScaler(), LogisticRegression(C=C, max_iter=2000))
+        model.fit(train[cols], train["member"].astype(int))
+        out.loc[part.index] = model.decision_function(part[cols])
+    return out
+
+
+def owner_test_mean(data: pd.DataFrame, logodds: pd.Series) -> pd.Series:
+    """Dataset inference: the mean log-odds of the test records of the owner. A test record does not count itself.
+
+    Test is the suspect part of a set. Known can be a part that the company did not use, so it does not count.
+    The value is 0 for single records.
+    """
+    is_test = (data["split"] == "test").astype(float)
+    total = (logodds * is_test).groupby(data["source"]).transform("sum") - logodds * is_test
+    count = is_test.groupby(data["source"]).transform("sum") - is_test
+    mean = (total / count.replace(0, np.nan)).fillna(0.0)
+    return mean.where(data["source_type"].isin(SET_TYPES), 0.0)
+
+
+def di_cross_validate(data: pd.DataFrame, columns, weights=(0.0, 0.5, 1.0, 2.0), C: float = 1.0, seeds=range(5)) -> pd.DataFrame:
+    """Validation of record log-odds + w * owner_test_mean on known.
+
+    The records of the owners with fewer known records than a victim are not evaluated: their known part has no member
+    by construction, but their test part can have members.
+    """
+    from .metrics import auc, tpr_at_5fpr
+    from .validation import make_folds
+    known = data[data["split"] == "known"]
+    groups = owner_groups(data)
+    rows = []
+    for seed in seeds:
+        fold = pd.Series(make_folds(known, 2, seed), index=known.index)
+        for f in range(2):
+            logodds = record_logodds(data, fold.index[fold != f], columns, C)
+            owner = owner_test_mean(data, logodds)
+            evaluate = fold.index[(fold == f) & (groups.loc[fold.index] != "other")]
+            for w in weights:
+                score = logodds + w * owner
+                for name, idx in [("all", evaluate)] + list(data.loc[evaluate].groupby("source_type").groups.items()):
+                    labels = data.loc[idx, "member"].astype(int)
+                    rows.append({"seed": seed, "fold": f, "w": w, "records": name,
+                                 "TPR@5%FPR": tpr_at_5fpr(score.loc[idx].tolist(), labels.tolist()),
+                                 "AUC": auc(score.loc[idx], labels)})
+    results = pd.DataFrame(rows)
+    return results.groupby(["w", "records"], sort=False)[["TPR@5%FPR", "AUC"]].agg(["mean", "std"]).round(3)
+
+
+def submission(data: pd.DataFrame, columns, w: float, C: float = 1.0) -> pd.DataFrame:
+    """Scores of the test records: fit on all known records."""
+    known_index = data.index[data["split"] == "known"]
+    logodds = record_logodds(data, known_index, columns, C)
+    score = logodds + w * owner_test_mean(data, logodds)
+    test = data["split"] == "test"
+    return pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]})
+
+
+def explore_v3(out_dir: str) -> None:
+    """Validation of the dataset inference score for each weight w, and one submission file for each w."""
+    from .data import find_root, load_records
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    records = load_records(find_root())
+    data = pd.concat([records, all_features(find_passes(), records)], axis=1)
+    pd.set_option("display.width", 200)
+    table = di_cross_validate(data, columns_of)
+    table.to_csv(out / "di_cv.csv")
+    print(table.to_string(), flush=True)
+    for w in (0.0, 0.5, 1.0, 2.0):
+        submission(data, columns_of, w).to_csv(out / f"submission_w{w}.csv", index=False)
