@@ -137,3 +137,74 @@ def run_shadow(half: int, device: str, out_dir: str, limit: int | None = None) -
     except Exception:
         traceback.print_exc()
         (out / f"error_half{half}.txt").write_text(traceback.format_exc())
+
+
+PHOTO_SPLITS = 4  # random half splits of the photos; each photo is IN for 4 shadow models and OUT for 4
+PHOTO_BATCH = 8
+
+
+def photo_shadow_model(ob, root: Path, device):
+    """BUMAS-mini with the LLM of Qwen3-0.6B-Base. The connector of BUMAS-mini is the only one that exists."""
+    model = ob.BUMASMini.from_components(reference_path(), root / "model" / "vision", dtype=torch.float32)
+    state = torch.load(root / "model" / "connector.pt")
+    model.connector.load_state_dict({k: v.float() for k, v in state.items()})
+    return model.to(device)
+
+
+def train_photos(model, ob, photos, device) -> None:
+    """One epoch as in S3: the image block, then the caption. The loss is only on the caption. The vision encoder is frozen."""
+    model.llm.gradient_checkpointing_enable()
+    model.llm.config.use_cache = False
+    model.train()
+    params = list(model.llm.parameters()) + list(model.connector.parameters())
+    optimizer = torch.optim.AdamW(params, lr=LR, weight_decay=0.0)
+    order = np.random.default_rng(0).permutation(len(photos))
+    total = math.ceil(len(order) / PHOTO_BATCH)
+    warmup = max(1, total // 10)
+    schedule = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda s: min((s + 1) / warmup, 0.1 + 0.45 * (1 + math.cos(math.pi * s / total))))
+    pad = model.tok.pad_token_id
+    for step, s in enumerate(range(0, len(order), PHOTO_BATCH)):
+        batch = photos.iloc[order[s:s + PHOTO_BATCH]]
+        encoded = [ob.caption_example(model.tok, c) for c in batch["caption"].fillna("")]
+        width = max(len(ids) for ids, _ in encoded)
+        input_ids = torch.tensor([ids + [pad] * (width - len(ids)) for ids, _ in encoded], device=device)
+        labels = torch.tensor([lab + [-100] * (width - len(lab)) for _, lab in encoded], device=device)
+        mask = torch.tensor([[1] * len(ids) + [0] * (width - len(ids)) for ids, _ in encoded], device=device)
+        pixels = torch.stack([ob.load_image(p) for p in batch["image_path"]]).to(device)
+        loss = model(input_ids=input_ids, attention_mask=mask, labels=labels, pixel_values=pixels).loss
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(params, 1.0)
+        optimizer.step()
+        schedule.step()
+        optimizer.zero_grad(set_to_none=True)
+        if step % 50 == 0 or step == total - 1:
+            print(f"step {step + 1}/{total} loss {loss.item():.3f}", flush=True)
+    model.eval()
+    model.llm.gradient_checkpointing_disable()
+
+
+def run_photo_shadow(splits: list[int], device: str, out_dir: str, limit: int | None = None) -> None:
+    """For each split: train one shadow model on each half of the photos, then score the captions of all photos with their own photo."""
+    from .logprobs import import_openbumas, photo_pass
+    torch.cuda.set_device(device)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        root = find_root()
+        ob = import_openbumas(root)
+        photos = load_records(root)
+        photos = photos[photos["kind"] == "photo"].copy()
+        if limit:
+            photos = photos.groupby("source_type").head(limit // 2)
+        for split in splits:
+            photos["half"] = shadow_halves(photos, seed=10 + split)
+            photos[["id", "half"]].to_csv(out / f"photo_halves_s{split}.csv", index=False)
+            for half in (0, 1):
+                model = photo_shadow_model(ob, root, device)
+                train_photos(model, ob, photos[photos["half"] == half], device)
+                photo_pass(model, ob, photos, device, out, f"pshadow_s{split}_h{half}")
+                del model
+                torch.cuda.empty_cache()
+    except Exception:
+        traceback.print_exc()
+        (out / f"error_{device.replace(':', '')}.txt").write_text(traceback.format_exc())
