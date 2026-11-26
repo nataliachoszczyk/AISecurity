@@ -1,0 +1,8 @@
+feature,TPR@5%FPR,AUC
+ent_own,0.056,0.523
+ent_max10,0.028,0.518
+ent_vs_qwen,0.097,0.572
+ent_vs_pout,0.056,0.479
+ent_vs_pout_max10,0.014,0.463
+minkpp_vs_pout,0.139,0.743
+minkpp_vs_pout_low20,0.139,0.705

@@ -120,3 +120,21 @@ Limits of the check:
   - `set_logodds` gives the log-odds of any set type, so that the coordinator can also use it on the text types.
   - Removed `explore_v1`, `owner_z` and the owner mean with w 1. The job `photographer-v1` ran the commit `f3c7b19`.
 - Added the job `2026-11-27_51_photographer-v2` (CPU). Record variants, one change each against v6: C 0.1, the entropy features (MaxRényi-K% with alpha 1, gains over the OUT photo shadow models), the PLIRA features.
+- Job `photographer-v2` is complete in 6 minutes. TPR@5%FPR (mean, std):
+
+  | Record variant | Known CV record | Known CV + group | Check: record | Check: mixture tau 1 | Check: prior shift w 1 |
+  |---|---|---|---|---|---|
+  | v6 | 0.503 (0.066) | 0.597 (0.066) | 0.650 (0.034) | 0.982 (0.034) | 0.817 (0.041) |
+  | v6 C 0.1 | 0.531 (0.062) | 0.639 (0.037) | 0.722 (0.018) | 1.000 (0.000) | 0.867 (0.026) |
+  | v6 + entropy | 0.469 (0.093) | 0.631 (0.054) | 0.642 (0.054) | 0.953 (0.040) | 0.797 (0.037) |
+  | v6 + PLIRA | 0.478 (0.070) | 0.578 (0.057) | 0.594 (0.063) | 0.944 (0.050) | 0.753 (0.041) |
+
+  - The entropy features are weak alone (best: Min-K%++ gain over the OUT photo shadow models, AUC 0.74). They and PLIRA make the record score worse. Thus they are removed.
+  - C 0.1 is better. On test it gives r 0.95, q_other 0.22 and 277 expected members (the structure of the text types gives 280). Nine other owners have an owner posterior above 0.9, the next one has 0.03.
+  - Scenarios with a wrong structure (v6, check: mixture tau 1, tau 0.5, prior shift w 1): victims with 75% members 0.835, 0.886, 0.695. Clean owners with 4% members 0.808, 0.754, 0.726. 3 hidden victims 0.992, 0.997, 0.817. 12 hidden victims 0.950, 0.967, 0.817. All three errors together 0.692, 0.700, 0.652 (group prior alone: 0.749).
+  - Thus the mixture stays better than the prior shift in all scenarios. With all errors together, the difference is smaller than the std.
+  - Global simulation (`explore_v9` style, v6): 0.769 (std 0.017) with the mixture for the photographer records, 0.756 (0.019) with the prior shift w 1. Photographer TPR at the global threshold: 0.872 against 0.647.
+- Removed the entropy features from `src/photographer.py`.
+- Added the job `2026-11-27_52_photographer-v3` (CPU): C 0.1, 0.03 and 0.01, and v6 without the domain reference features (C 0.1).
+  - The cross-fit of the domain features differs between known and test. A known record gets the model of the other fold, a test record gets the mean of the two models.
+  - The job also writes the llr distributions of known and test (`llr_shift`).

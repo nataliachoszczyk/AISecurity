@@ -1,0 +1,37 @@
+variant,TPR@5%FPR mean,TPR@5%FPR std,AUC mean,AUC std,scenario
+record,0.65,0.034,0.928,0.009,base
+mixture tau=1.0,0.982,0.034,0.996,0.002,base
+group prior,0.831,0.028,0.97,0.006,base
+mixture tau=0.5,0.988,0.029,0.997,0.002,base
+owner mean w=3,0.956,0.038,0.995,0.001,base
+owner prior shift w=1,0.817,0.041,0.97,0.006,base
+record,0.599,0.034,0.918,0.009,victim 75%
+mixture tau=1.0,0.835,0.046,0.976,0.004,victim 75%
+group prior,0.757,0.031,0.952,0.006,victim 75%
+mixture tau=0.5,0.886,0.057,0.973,0.003,victim 75%
+owner mean w=3,0.83,0.04,0.971,0.002,victim 75%
+owner prior shift w=1,0.695,0.039,0.954,0.006,victim 75%
+record,0.65,0.034,0.928,0.009,clean 4%
+mixture tau=1.0,0.808,0.05,0.97,0.007,clean 4%
+group prior,0.76,0.031,0.943,0.014,clean 4%
+mixture tau=0.5,0.754,0.034,0.95,0.005,clean 4%
+owner mean w=3,0.741,0.047,0.933,0.008,clean 4%
+owner prior shift w=1,0.726,0.05,0.953,0.007,clean 4%
+record,0.65,0.034,0.928,0.009,hidden 3
+mixture tau=1.0,0.992,0.024,0.998,0.002,hidden 3
+group prior,0.917,0.026,0.985,0.005,hidden 3
+mixture tau=0.5,0.997,0.016,0.999,0.002,hidden 3
+owner mean w=3,0.956,0.038,0.995,0.001,hidden 3
+owner prior shift w=1,0.817,0.041,0.97,0.006,hidden 3
+record,0.65,0.034,0.928,0.009,hidden 12
+mixture tau=1.0,0.95,0.041,0.994,0.002,hidden 12
+group prior,0.669,0.016,0.941,0.006,hidden 12
+mixture tau=0.5,0.967,0.041,0.995,0.002,hidden 12
+owner mean w=3,0.956,0.038,0.995,0.001,hidden 12
+owner prior shift w=1,0.817,0.041,0.97,0.006,hidden 12
+record,0.609,0.033,0.92,0.009,all wrong
+mixture tau=1.0,0.692,0.062,0.948,0.009,all wrong
+group prior,0.749,0.034,0.938,0.015,all wrong
+mixture tau=0.5,0.7,0.046,0.932,0.005,all wrong
+owner mean w=3,0.664,0.041,0.91,0.008,all wrong
+owner prior shift w=1,0.652,0.047,0.939,0.006,all wrong

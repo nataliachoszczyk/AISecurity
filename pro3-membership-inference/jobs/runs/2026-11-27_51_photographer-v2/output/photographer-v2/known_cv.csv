@@ -1,0 +1,9 @@
+variant,TPR@5%FPR mean,TPR@5%FPR std,AUC mean,AUC std,record
+record,0.503,0.066,0.894,0.011,v6
+record + known group,0.597,0.066,0.951,0.005,v6
+record,0.531,0.062,0.902,0.01,v6 C=0.1
+record + known group,0.639,0.037,0.952,0.004,v6 C=0.1
+record,0.469,0.093,0.887,0.015,v6 + entropy
+record + known group,0.631,0.054,0.95,0.005,v6 + entropy
+record,0.478,0.07,0.878,0.019,v6 + plira
+record + known group,0.578,0.057,0.947,0.006,v6 + plira
