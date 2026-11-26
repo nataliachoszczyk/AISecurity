@@ -665,3 +665,41 @@ def photo_shadow_features(records: pd.DataFrame, splits=range(4)) -> pd.DataFram
         lp_out = [models[s, 1 - halves[s][rid]][i]["lp"] for s in splits]
         rows.append(lira_multi(target[i]["lp"], lp_in, lp_out, "plira"))
     return pd.DataFrame(rows, index=ids).reindex(records["id"]).set_axis(records.index)
+
+
+def v7_columns_of(source_type: str) -> list[str]:
+    return v6_columns_of(source_type) + (PLIRA if source_type in ("photographer", "web photo") else [])
+
+
+def explore_v7(out_dir: str) -> None:
+    """As explore_v6, with the features of the photo shadow models."""
+    from .data import find_root, load_records
+    from .metrics import auc, tpr_at_5fpr
+    from .validation import cross_validate, summarize
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    pd.set_option("display.width", 200)
+    records = load_records(find_root())
+    data = pd.concat([records, all_features(find_passes(), records), v6_features(records),
+                      photo_shadow_features(records)], axis=1)
+    known = data[data["split"] == "known"].copy()
+    known["member"] = known["member"].astype(int)
+    rows = []
+    for source_type, part in known[known["kind"] == "photo"].groupby("source_type"):
+        for col in PLIRA:
+            rows.append({"source_type": source_type, "feature": col, "AUC": auc(part[col], part["member"]),
+                         "TPR@5%FPR": tpr_at_5fpr(part[col].tolist(), part["member"].tolist())})
+    single = pd.DataFrame(rows).round(3)
+    single.to_csv(out / "single_v7.csv", index=False)
+    print(single.to_string(), flush=True)
+    variants = {"record v6": logistic_score(v6_columns_of), "record v7": logistic_score(v7_columns_of)}
+    results = pd.concat([cross_validate(known, fn).assign(variant=name) for name, fn in variants.items()])
+    table = pd.concat([summarize(r).assign(variant=name) for name, r in results.groupby("variant", sort=False)])
+    table.to_csv(out / "cv_v7.csv", index=False)
+    print(table.round(3).to_string(), flush=True)
+    two = two_stage_cross_validate(data, v7_columns_of)
+    two.to_csv(out / "two_stage_v7.csv")
+    print(two.to_string(), flush=True)
+    score = two_stage(data, data.index[data["split"] == "known"], v7_columns_of, "test")
+    test = data["split"] == "test"
+    pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / "submission_v7.csv", index=False)
