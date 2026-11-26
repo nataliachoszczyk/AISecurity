@@ -13,9 +13,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from .attacks import (PLIRA, all_features, find_folder, find_passes, load_pass, lowest_mean, owner_groups,
-                      owner_prior_shift, photo_shadow_features, record_logodds, test_like_weights, v6_columns_of,
-                      v6_features, weighted_tpr_at_5fpr, z_tokens)
+from .attacks import (all_features, find_passes, owner_groups, owner_prior_shift, record_logodds, test_like_weights,
+                      v6_columns_of, v6_features, weighted_tpr_at_5fpr)
 from .data import find_root, load_records
 from .metrics import auc, tpr_at_5fpr
 from .validation import make_folds
@@ -30,38 +29,6 @@ def load_data() -> pd.DataFrame:
     data = pd.concat([records, all_features(find_passes(), records), v6_features(records)], axis=1)
     data["group"] = owner_groups(data)
     return data.drop(columns=["text", "caption", "title", "content", "image"], errors="ignore")
-
-
-def entropy_features(records: pd.DataFrame, splits=range(4)) -> pd.DataFrame:
-    """Entropy features of the captions (MaxRényi-K% with alpha 1, Li et al. 2024) and gains over the photo shadow models.
-
-    mu is the mean log p over the vocabulary, thus the negative entropy. A member gets a lower entropy.
-    The OUT photo shadow models have the same input format as BUMAS-mini (photo, then caption).
-    """
-    base, folder = find_passes(), find_folder("pshadow_s0_h0.npz")
-    ids, own = load_pass(base, "bumas_photo_own")
-    _, qwen = load_pass(base, "qwen_caption_text")
-    halves = {s: pd.read_csv(folder / f"photo_halves_s{s}.csv").set_index("id")["half"] for s in splits}
-    models = {(s, h): load_pass(folder, f"pshadow_s{s}_h{h}")[1] for s in splits for h in (0, 1)}
-    rows = []
-    for i, rid in enumerate(ids):
-        o, q = own[i], qwen[i]
-        outs = [models[s, 1 - halves[s][rid]][i] for s in splits]
-        mu_out = np.mean([m["mu"] for m in outs], axis=0)
-        z_out = np.mean([z_tokens(m) for m in outs], axis=0)
-        rows.append({
-            "ent_own": o["mu"].mean(),
-            "ent_max10": lowest_mean(o["mu"], 0.1),
-            "ent_vs_qwen": (o["mu"] - q["mu"]).mean(),
-            "ent_vs_pout": (o["mu"] - mu_out).mean(),
-            "ent_vs_pout_max10": lowest_mean(o["mu"] - mu_out, 0.1),
-            "minkpp_vs_pout": (z_tokens(o) - z_out).mean(),
-            "minkpp_vs_pout_low20": lowest_mean(z_tokens(o) - z_out, 0.2),
-        })
-    return pd.DataFrame(rows, index=ids).reindex(records["id"]).set_axis(records.index)
-
-
-ENTROPY = ["ent_own", "ent_max10", "ent_vs_qwen", "ent_vs_pout", "ent_vs_pout_max10", "minkpp_vs_pout", "minkpp_vs_pout_low20"]
 
 
 def logit(p):
@@ -299,7 +266,7 @@ def set_logodds(data: pd.DataFrame, source_type: str = TYPE, cols=None, tau: flo
                       pd.DataFrame({"id": test["id"], "split": "test", "logodds": lo_test})])
 
 
-def known_mixture(data: pd.DataFrame, logodds: pd.Series, fit_index, ev_index, source_type: str = TYPE,
+def known_mixture(data: pd.DataFrame, fit_index, ev_index, cols, C: float, source_type: str = TYPE,
                   tau: float = 1.0) -> pd.Series:
     """The mixture on the evaluated known records of one type, for the global simulation on known.
 
@@ -309,12 +276,12 @@ def known_mixture(data: pd.DataFrame, logodds: pd.Series, fit_index, ev_index, s
     fit, ev = data.loc[fit_index], data.loc[ev_index]
     fit, ev = fit[fit["source_type"] == source_type], ev[ev["source_type"] == source_type]
     group = ev["group"].where(ev["group"] != "victim", "other").mask(ev["source"].isin(fit.loc[fit["member"] == 1, "source"]), "victim")
-    llr = logodds[ev.index] - logit(fit["member"].mean())
+    llr = fit_llr(fit, ev, cols, C)
     params = fit_mixture(llr, ev["source"], group, tau)
     return pd.Series(mixture(llr, ev["source"], group, params, tau)[0], index=ev.index)
 
 
-def global_sim(data: pd.DataFrame, folds: dict, tau: float = 1.0) -> pd.DataFrame:
+def global_sim(data: pd.DataFrame, folds: dict, cols, C: float, tau: float = 1.0) -> pd.DataFrame:
     """The global simulation of explore_v9 (attacks.py) on known.
 
     Variants: the coordinator owner prior (w = 1) for all set types, and the same with the photographer records
@@ -333,7 +300,7 @@ def global_sim(data: pd.DataFrame, folds: dict, tau: float = 1.0) -> pd.DataFram
             logodds = record_logodds(data, fit_index, v6_columns_of)
             base = owner_prior_shift(data, logodds, "known", 1.0)
             mixed = base.copy()
-            photo = known_mixture(data, logodds, fit_index, ev, TYPE, tau)
+            photo = known_mixture(data, fit_index, ev, cols, C, TYPE, tau)
             mixed[photo.index] = photo
             for name, score in [("owner prior shift w=1", base), ("photographer mixture", mixed)]:
                 s, y, w = score[ev].to_numpy(), known.loc[ev, "member"].to_numpy(), sample_w[ev].to_numpy()
@@ -366,41 +333,58 @@ def test_owners(data: pd.DataFrame, cols, C: float = 1.0) -> list[dict]:
     return out
 
 
+def no_domain_columns(source_type: str = TYPE) -> list[str]:
+    """v6 without the features of the domain reference models. Their cross-fit differs between known and test."""
+    return [c for c in v6_columns_of(source_type) if not c.startswith("dom")]
+
+
 RECORD_VARIANTS = {
-    "v6": (lambda: v6_columns_of(TYPE), 1.0),
-    "v6 C=0.1": (lambda: v6_columns_of(TYPE), 0.1),
-    "v6 + entropy": (lambda: v6_columns_of(TYPE) + ENTROPY, 1.0),
-    "v6 + plira": (lambda: v6_columns_of(TYPE) + PLIRA, 1.0),
+    "v6 C=0.1": (v6_columns_of, 0.1),
+    "v6 C=0.03": (v6_columns_of, 0.03),
+    "v6 C=0.01": (v6_columns_of, 0.01),
+    "v6 no domain C=0.1": (no_domain_columns, 0.1),
 }
 
 
-def explore_v2(out_dir: str, variants=RECORD_VARIANTS) -> None:
-    """Record variants (one change each against v6) and the scenarios of the honest check, the global simulation,
-    the test owner summary and the log-odds file."""
+def explore(out_dir: str, variants=RECORD_VARIANTS, final="v6 C=0.1") -> None:
+    """Record variants with the known CV, the honest check and the test summary. For the final variant also the
+    scenarios, the llr shift, the global simulation and the log-odds file."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     pd.set_option("display.width", 250)
     pd.set_option("display.max_colwidth", 80)
     data = load_data()
-    data = pd.concat([data, entropy_features(data), photo_shadow_features(data)], axis=1)
     folds = {seed: baseline_folds(data, seed) for seed in range(5)}
     known = data[(data["source_type"] == TYPE) & (data["split"] == "known")].copy()
     known["member"] = known["member"].astype(int)
-    tables = {"single_entropy": pd.DataFrame([{"feature": c, **metrics_row(known[c].to_numpy(), known["member"])}
-                                              for c in ENTROPY]).round(3)}
     cv, check, owners = [], [], []
     for name, (columns, C) in variants.items():
-        cols = columns()
+        cols = columns(TYPE)
         cv.append(summary(known_cv(known, cols, folds, C)).assign(record=name))
         check.append(summary(honest_check(known, cols, folds, SCENARIOS["base"], C=C)).assign(record=name))
         owners += [{"record": name, **row} for row in test_owners(data, cols, C)]
         print(name, "done", flush=True)
-    tables.update(known_cv=pd.concat(cv), honest_check=pd.concat(check), test_owners=pd.DataFrame(owners))
-    cols = v6_columns_of(TYPE)
-    tables["scenarios"] = pd.concat([summary(honest_check(known, cols, folds, sc)).assign(scenario=name)
-                                     for name, sc in SCENARIOS.items()])
-    tables["global_sim"] = global_sim(data, folds)
+    tables = {"known_cv": pd.concat(cv), "honest_check": pd.concat(check), "test_owners": pd.DataFrame(owners)}
+    columns, C = variants[final]
+    cols = columns(TYPE)
+    tables["scenarios"] = pd.concat([summary(honest_check(known, cols, folds, sc, C=C)).assign(scenario=name)
+                                     for name, sc in SCENARIOS.items() if name != "base"])
+    tables["llr_shift"] = llr_shift(data, cols, C)
+    tables["global_sim"] = global_sim(data, folds, cols, C)
     for file, table in tables.items():
         table.to_csv(out / f"{file}.csv", index=False)
         print(file, "\n", table.to_string(), flush=True)
-    set_logodds(data).to_csv(out / "submission_photographer_logodds.csv", index=False)
+    set_logodds(data, TYPE, cols, C=C).to_csv(out / "submission_photographer_logodds.csv", index=False)
+
+
+def llr_shift(data: pd.DataFrame, cols, C: float = 1.0) -> pd.DataFrame:
+    """Distribution of the llr in known (out of fold) and in test, for each owner group. A shift breaks the calibration.
+
+    In test, the full owners are almost surely clean and the victims almost all members.
+    """
+    part = data[data["source_type"] == TYPE]
+    known, test = part[part["split"] == "known"], part[part["split"] == "test"]
+    llr = pd.concat([oof_llr(known, cols, baseline_folds(data, 0), C), pd.Series(fit_llr(known, test, cols, C), index=test.index)])
+    label = part["member"].map({1.0: " member", 0.0: " non-member"}).fillna("")
+    name = part["split"] + " " + part["group"] + label
+    return llr.groupby(name).describe(percentiles=[0.1, 0.5, 0.9]).round(2).reset_index(names="records")
