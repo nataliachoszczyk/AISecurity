@@ -543,19 +543,23 @@ def domain_features(lp_t: np.ndarray, lp_d: np.ndarray, prefix: str) -> dict:
     return {f"{prefix}": d.mean(), f"{prefix}_low20": lowest_mean(d, 0.2), f"{prefix}_gain_frac": float((d > 0).mean())}
 
 
-def v6_features(records: pd.DataFrame) -> pd.DataFrame:
-    """Features from the domain reference models (job refmodel) and the shadow models (job shadow)."""
+def v6_features(records: pd.DataFrame, shadow_names=("shadow",)) -> pd.DataFrame:
+    """Features from the domain reference models (job refmodel) and the shadow models (jobs shadow and shadow-b).
+
+    With more than one pair of shadow models, the IN and the OUT log p are the means over the pairs.
+    """
     from .validation import make_folds
-    base, ref_dir, shadow_dir = find_passes(), find_folder("ref0_text.npz"), find_folder("shadow0_text.npz")
+    base, ref_dir = find_passes(), find_folder("ref0_text.npz")
+    shadow_dirs = {n: find_folder(f"{n}0_text.npz") for n in shadow_names}
     by_id = records.set_index("id")
     known = records[records["split"] == "known"]
     ref_fold = pd.Series(make_folds(known, 2, seed=0), index=known["id"])  # the folds of the job refmodel
-    half = pd.read_csv(shadow_dir / "shadow_halves.csv").set_index("id")["half"]
+    halves = {n: pd.read_csv(d / f"{n}_halves.csv").set_index("id")["half"] for n, d in shadow_dirs.items()}
     tables = []
     for kind, target_names in [("text", ["bumas_text"]), ("caption", ["bumas_caption_text", "bumas_photo_own"])]:
         suffix = "text" if kind == "text" else "caption_text"
         ids, ref = zip(*[load_pass(ref_dir, f"ref{f}_{suffix}") for f in (0, 1)])
-        _, shadow = zip(*[load_pass(shadow_dir, f"shadow{h}_{suffix}") for h in (0, 1)])
+        shadows = {n: [load_pass(d, f"{n}{h}_{suffix}")[1] for h in (0, 1)] for n, d in shadow_dirs.items()}
         targets = {name: load_pass(base, name) for name in target_names}
         for name, (t_ids, _) in targets.items():
             assert t_ids.equals(ids[0]), name
@@ -567,8 +571,8 @@ def v6_features(records: pd.DataFrame) -> pd.DataFrame:
                 lp_d = ref[1 - ref_fold[rid]][i]["lp"]
             else:
                 lp_d = (ref[0][i]["lp"] + ref[1][i]["lp"]) / 2
-            h = half[rid]
-            lp_in, lp_out = shadow[h][i]["lp"], shadow[1 - h][i]["lp"]
+            lp_in = np.mean([shadows[n][halves[n][rid]][i]["lp"] for n in shadow_dirs], axis=0)
+            lp_out = np.mean([shadows[n][1 - halves[n][rid]][i]["lp"] for n in shadow_dirs], axis=0)
             for name, (_, t_rows) in targets.items():
                 tag = "own" if name == "bumas_photo_own" else "txt"
                 prefix = "dom" if kind == "text" else f"dom_{tag}"
@@ -703,3 +707,27 @@ def explore_v7(out_dir: str) -> None:
     score = two_stage(data, data.index[data["split"] == "known"], v7_columns_of, "test")
     test = data["split"] == "test"
     pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / "submission_v7.csv", index=False)
+
+
+def explore_v8(out_dir: str, shadow_names=("shadow",)) -> None:
+    """Record score with the v6 features (means over the shadow pairs): validation, expected members in test, submission."""
+    from .data import find_root, load_records
+    from .validation import cross_validate, summarize
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    pd.set_option("display.width", 200)
+    records = load_records(find_root())
+    data = pd.concat([records, all_features(find_passes(), records), v6_features(records, shadow_names)], axis=1)
+    known = data[data["split"] == "known"].copy()
+    known["member"] = known["member"].astype(int)
+    results = cross_validate(known, logistic_score(v6_columns_of))
+    table = summarize(results)
+    table.to_csv(out / "cv_v8.csv", index=False)
+    print(table.round(3).to_string(), flush=True)
+    score = record_logodds(data, data.index[data["split"] == "known"], v6_columns_of)
+    test = data["split"] == "test"
+    expected = data.loc[test].assign(group=owner_groups(data)[test], p=1 / (1 + np.exp(-score[test])))
+    expected = expected.groupby(["source_type", "group"])["p"].agg(records="size", expected_members="sum").round(1)
+    expected.to_csv(out / "test_expected_v8.csv")
+    print(expected.to_string(), flush=True)
+    pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / "submission_v8.csv", index=False)
