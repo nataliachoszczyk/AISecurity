@@ -39,12 +39,12 @@ def pieces(tok, texts: list[str], seed: int) -> list[torch.Tensor]:
     return [torch.tensor(stream[s:s + CHUNK]) for s in range(0, len(stream) - 1, CHUNK)]
 
 
-def train(llm, tok, texts: list[str], device) -> None:
+def train(llm, tok, texts: list[str], device, epochs: int = EPOCHS) -> None:
     llm.gradient_checkpointing_enable()
     llm.config.use_cache = False
     llm.train()
     optimizer = torch.optim.AdamW(llm.parameters(), lr=LR, weight_decay=0.0)
-    all_pieces = [pieces(tok, texts, seed=epoch) for epoch in range(EPOCHS)]
+    all_pieces = [pieces(tok, texts, seed=epoch) for epoch in range(epochs)]
     total = sum(math.ceil(len(p) / ACCUMULATION) for p in all_pieces)
     warmup = max(1, total // 10)
     # A linear warmup, then a cosine decay to 10% of LR.
@@ -94,3 +94,46 @@ def run(fold: int, device: str, out_dir: str, limit: int | None = None) -> None:
         # A failed kernel loses all its output. Thus log the error and keep the passes that are complete.
         traceback.print_exc()
         (out / f"error_fold{fold}.txt").write_text(traceback.format_exc())
+
+
+def shadow_halves(records, seed: int = 1) -> np.ndarray:
+    """A random half (0 or 1) for each record. Each owner and each source type of single records has half of its records in each half."""
+    rng = np.random.default_rng(seed)
+    is_set = records.groupby("source")["source"].transform("size") > 1
+    group = records["source"].where(is_set, records["source_type"])
+    half = np.empty(len(records), dtype=int)
+    for idx in records.groupby(group).indices.values():
+        idx = rng.permutation(idx)
+        half[idx] = (rng.integers(2) + np.arange(len(idx))) % 2
+    return half
+
+
+def run_shadow(half: int, device: str, out_dir: str, limit: int | None = None) -> None:
+    """Train a shadow model on one half of all records (known and test, no labels), one epoch as in S1. Then score all records.
+
+    Each record is IN for the model of its half and OUT for the other model.
+    """
+    torch.cuda.set_device(device)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        root = find_root()
+        records = load_records(root)
+        records["half"] = shadow_halves(records)
+        if half == 0:
+            records[["id", "half"]].to_csv(out / "shadow_halves.csv", index=False)
+        texts = records.loc[records["half"] == half, "content"].tolist()
+        if limit:
+            texts = texts[:limit]
+        tok = AutoTokenizer.from_pretrained(root / "model" / "llm")
+        llm = AutoModelForCausalLM.from_pretrained(reference_path(), dtype=torch.float32).to(device)
+        print(f"half {half}: {len(texts)} training records", flush=True)
+        train(llm, tok, texts, device, epochs=1)
+        score = records.groupby("source_type").head(limit // 4) if limit else records
+        with torch.no_grad():
+            caption_text_pass(llm, tok, score[score["kind"] == "photo"], device, out, f"shadow{half}_caption_text")
+            text_pass(llm, tok, score[score["kind"] == "text"], device, out, f"shadow{half}_text")
+    except Exception:
+        traceback.print_exc()
+        (out / f"error_half{half}.txt").write_text(traceback.format_exc())
