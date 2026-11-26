@@ -162,8 +162,80 @@ def single_features(known: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for source_type, part in known.groupby("source_type"):
         labels = part["member"].astype(int)
+        if labels.nunique() < 2:
+            continue
         for col in columns_of(source_type):
             values = part[col].to_numpy()
             rows.append({"source_type": source_type, "feature": col, "AUC": auc(values, labels),
                          "TPR@5%FPR": tpr_at_5fpr(values.tolist(), labels.tolist())})
     return pd.DataFrame(rows)
+
+
+OWNER_COLUMNS = {"text": ["ref", "ref_minkpp"], "photo": ["ref_img", "img_gain"]}
+
+
+def add_owner_columns(records: pd.DataFrame, feats: pd.DataFrame) -> pd.DataFrame:
+    """Add owner_<feature>: the mean of the feature over all records of the owner."""
+    feats = feats.copy()
+    for kind, cols in OWNER_COLUMNS.items():
+        is_kind = records["kind"] == kind
+        for col in cols:
+            feats.loc[is_kind, f"owner_{col}"] = owner_means(records[is_kind], feats.loc[is_kind, col])
+    return feats
+
+
+def victim_flag(fit: pd.DataFrame, part: pd.DataFrame) -> pd.Series:
+    """1 if the owner has a known member in the fit part. A fit record does not count its own label."""
+    members = fit.groupby("source")["member"].sum()
+    flag = part["source"].map(members).fillna(0)
+    if part.index.isin(fit.index).all():
+        flag = flag - part["member"]
+    return (flag > 0).astype(float)
+
+
+def combined_score(record_columns, owner: bool, prior: bool, C: float = 1.0):
+    """Logistic regression for each source type on the record features, plus owner features for the set types."""
+    def columns(source_type):
+        cols = list(record_columns(source_type))
+        if source_type in SET_TYPES:
+            kind = "photo" if source_type == "photographer" else "text"
+            cols += [f"owner_{c}" for c in OWNER_COLUMNS[kind]] if owner else []
+            cols += ["victim"] if prior else []
+        return cols
+
+    inner = logistic_score(columns, C)
+
+    def score(fit, evaluate):
+        return inner(fit.assign(victim=victim_flag(fit, fit)), evaluate.assign(victim=victim_flag(fit, evaluate)))
+    return score
+
+
+def explore(out_dir: str) -> None:
+    """Write the features, the score of each feature alone and the validation of the combined scores."""
+    from .data import find_root, load_records
+    from .validation import cross_validate, summarize
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    records = load_records(find_root())
+    feats = add_owner_columns(records, all_features(find_passes(), records))
+    feats.assign(id=records["id"]).dropna(how="all", axis=1).to_csv(out / "features.csv", index=False)
+    data = pd.concat([records, feats.drop(columns="n_tokens")], axis=1)
+    known = data[(data["split"] == "known") & feats["loss"].notna()].copy()
+    known["member"] = known["member"].astype(int)
+    single = single_features(known)
+    single.to_csv(out / "single_features.csv", index=False)
+    print(single.sort_values(["source_type", "TPR@5%FPR"], ascending=[True, False]).to_string(), flush=True)
+    if known.groupby("source_type")["member"].sum().min() < 10:
+        print("too few members for the validation (smoke test)")
+        return
+    variants = {
+        "record": combined_score(columns_of, owner=False, prior=False),
+        "record + victim": combined_score(columns_of, owner=False, prior=True),
+        "record + owner": combined_score(columns_of, owner=True, prior=False),
+        "record + owner + victim": combined_score(columns_of, owner=True, prior=True),
+    }
+    results = pd.concat([cross_validate(known, fn).assign(variant=name) for name, fn in variants.items()])
+    results.to_csv(out / "cv_folds.csv", index=False)
+    table = pd.concat([summarize(r).assign(variant=name) for name, r in results.groupby("variant", sort=False)])
+    table.to_csv(out / "cv.csv", index=False)
+    print(table.to_string(), flush=True)
