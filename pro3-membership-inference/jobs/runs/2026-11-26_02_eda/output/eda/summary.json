@@ -1,0 +1,97 @@
+{
+  "records": {
+    "known": 5000,
+    "test": 5000
+  },
+  "length_unit": "tokens",
+  "member_rate": 0.1666,
+  "source_types": {
+    "forum post": {
+      "known members": 330,
+      "known non-members": 1400,
+      "test": 1270
+    },
+    "web photo": {
+      "known members": 255,
+      "known non-members": 959,
+      "test": 890
+    },
+    "writer": {
+      "known members": 72,
+      "known non-members": 528,
+      "test": 840
+    },
+    "research group": {
+      "known members": 72,
+      "known non-members": 528,
+      "test": 840
+    },
+    "photographer": {
+      "known members": 72,
+      "known non-members": 528,
+      "test": 840
+    },
+    "podcast": {
+      "known members": 32,
+      "known non-members": 224,
+      "test": 320
+    }
+  },
+  "member_rate_by_type": {
+    "forum post": 0.1908,
+    "web photo": 0.21,
+    "writer": 0.12,
+    "research group": 0.12,
+    "photographer": 0.12,
+    "podcast": 0.125
+  },
+  "owners_with_2_known": 220,
+  "owners_pure_fraction": 0.8,
+  "test_with_known_owner": 0.568,
+  "median_length": {
+    "forum post": {
+      "median tokens, non-member": 279.0,
+      "median tokens, member": 281.0
+    },
+    "web photo": {
+      "median tokens, non-member": 24.0,
+      "median tokens, member": 24.0
+    },
+    "writer": {
+      "median tokens, non-member": 657.0,
+      "median tokens, member": 679.0
+    },
+    "research group": {
+      "median tokens, non-member": 1102.0,
+      "median tokens, member": 1111.0
+    },
+    "photographer": {
+      "median tokens, non-member": 69.0,
+      "median tokens, member": 69.0
+    },
+    "podcast": {
+      "median tokens, non-member": 2236.0,
+      "median tokens, member": 2316.0
+    }
+  },
+  "texts_above_2048": 0.0683085501858736,
+  "baselines_all": {
+    "length (longer = member)": {
+      "TPR@5%FPR": 0.0348,
+      "AUC": 0.4511
+    },
+    "length (shorter = member)": {
+      "TPR@5%FPR": 0.0504,
+      "AUC": 0.5489
+    },
+    "owner prior (other known records of the owner)": {
+      "TPR@5%FPR": 0.0,
+      "AUC": 0.6266
+    }
+  },
+  "photos": 3544,
+  "photos_without_file": 0,
+  "photos_same_file": 0,
+  "duplicate_content": 39,
+  "title_at_start": 0.290272614622057
+}
