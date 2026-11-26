@@ -625,3 +625,43 @@ def explore_v6(out_dir: str) -> None:
     score = two_stage(data, data.index[data["split"] == "known"], v6_columns_of, "test")
     test = data["split"] == "test"
     pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / "submission_v6.csv", index=False)
+
+
+def lira_multi(lp_t: np.ndarray, lp_in: list, lp_out: list, prefix: str) -> dict:
+    """LiRA with several IN and OUT shadow models (online LiRA of Carlini et al. 2022).
+
+    Each token gets a Gaussian for IN and for OUT, with the means of the models and one variance of the record.
+    """
+    mu_in, mu_out = np.mean(lp_in, axis=0), np.mean(lp_out, axis=0)
+    var = np.mean(np.concatenate([np.var(lp_in, axis=0), np.var(lp_out, axis=0)])) + 1e-3
+    g, m = lp_t - mu_out, mu_in - mu_out
+    m_pos = np.maximum(m, 0)
+    return {
+        f"{prefix}_llr": float((m * (2 * g - m)).mean() / (2 * var)),
+        f"{prefix}_llr_raw": float((m * (2 * g - m)).mean()),
+        f"{prefix}_gain": float(g.mean()),
+        f"{prefix}_m": float(m.mean()),
+        f"{prefix}_wgain": float((g * m_pos).sum() / max(m_pos.sum(), 1e-6)),
+        f"{prefix}_z": float((g / np.sqrt(var)).mean()),
+    }
+
+
+PLIRA = [f"plira_{s}" for s in ("llr", "llr_raw", "gain", "m", "wgain", "z")]
+
+
+def photo_shadow_features(records: pd.DataFrame, splits=range(4)) -> pd.DataFrame:
+    """Features of the photo shadow models (job photo-shadow) against BUMAS-mini with the own photo."""
+    folder = find_folder("pshadow_s0_h0.npz")
+    ids, target = load_pass(find_passes(), "bumas_photo_own")
+    models, halves = {}, {}
+    for s in splits:
+        halves[s] = pd.read_csv(folder / f"photo_halves_s{s}.csv").set_index("id")["half"]
+        for h in (0, 1):
+            m_ids, models[s, h] = load_pass(folder, f"pshadow_s{s}_h{h}")
+            assert m_ids.equals(ids)
+    rows = []
+    for i, rid in enumerate(ids):
+        lp_in = [models[s, halves[s][rid]][i]["lp"] for s in splits]
+        lp_out = [models[s, 1 - halves[s][rid]][i]["lp"] for s in splits]
+        rows.append(lira_multi(target[i]["lp"], lp_in, lp_out, "plira"))
+    return pd.DataFrame(rows, index=ids).reindex(records["id"]).set_axis(records.index)
