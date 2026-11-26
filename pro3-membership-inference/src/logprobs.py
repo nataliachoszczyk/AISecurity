@@ -76,7 +76,7 @@ def save(path: Path, ids, rows: list[dict]) -> None:
     lengths = [len(r["lp"]) for r in rows]
     arrays = {k: np.concatenate([r[k] for r in rows]).astype(np.float32) for k in rows[0]}
     np.savez(path, ids=np.asarray(ids), offsets=np.concatenate([[0], np.cumsum(lengths)]), **arrays)
-    print(f"saved {path.name}: {len(rows)} records, {sum(lengths)} tokens", flush=True)
+    print(f"{time.strftime('%H:%M:%S')} saved {path.name}: {len(rows)} records, {sum(lengths)} tokens", flush=True)
 
 
 def text_pass(llm, tok, texts, device, out: Path, name: str) -> None:
