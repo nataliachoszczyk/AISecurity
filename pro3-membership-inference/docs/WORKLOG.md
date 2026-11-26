@@ -14,3 +14,5 @@
 - Added `src/data.py` (load the records), `src/metrics.py` (TPR@5%FPR as on the server, checked against the server function) and `src/eda.py` (HTML report).
 - Added the job `2026-11-26_02_eda` (CPU). It makes the data analysis report on Kaggle.
 - Added a `.gitignore` line for HTML outputs, because the report shows task data.
+- Job `eda` is complete. The report is in `jobs/runs/2026-11-26_02_eda/output/eda/report.html` (local only). `summary.json` and `baselines.csv` are in git.
+- Main result: only 12 of 60 owners of each set type (podcast: 8 of 40) have known members, 6 of 14 records each (podcast: 4 of 9). Length gives no signal.
