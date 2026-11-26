@@ -32,3 +32,11 @@
   - captions with Qwen, without a photo.
 - Job `logprobs-smoke` (GPU, 10 texts and 20 photos of each source type): complete, no error.
 - Added `src/attacks.py`: the MIA features of each record (LOSS, zlib, Min-K%, Min-K%++, the reference attack and its variants, the gain from the own photo, the effect of the noise), owner means, and one logistic regression for each source type.
+- Job `logprobs` (all 10 000 records): complete in 91 minutes.
+- Jobs `attacks-v1` and `attacks-v2`: the reference attack (BUMAS-mini minus Qwen) separates the members of the text sets well (0.83 to 0.96). Forum posts give 0.48, photographers 0.34, web photos 0.11. More features of the token gains and a model of boosted trees give no gain.
+- Owner check: some owners with 8 known records (all non-members) have test records with high scores. Thus some owners are victims only in test, as in dataset inference (Maini et al.).
+- Jobs `attacks-v3` to `attacks-v5`: an owner term (the mean score of the other records of the owner) and a two-stage logistic regression. They help the photographers a little. The validation on known cannot show the full effect, because known has few non-members of owners that are not victims.
+- Added the reference model for the domain (`src/refmodel.py`, job `refmodel`): Qwen3-0.6B-Base trained on the known non-members of one fold, two folds as a cross-fit.
+- Added two shadow models (job `shadow`): Qwen3-0.6B-Base trained for one epoch on one random half of all records. Each record is IN for one model and OUT for the other.
+- Job `attacks-v6`: TPR@5%FPR of the record score on known: 0.63 (v1: 0.47). Forum posts 0.84, writers 0.92, research groups 1.00, podcasts 1.00, photographers 0.50, web photos 0.11. The best feature is the gain of BUMAS-mini over the OUT shadow model.
+- Added the photo shadow models (job `photo-shadow`, 4 half splits, 8 models in the S3 format) and a second pair of text shadow models (job `shadow-b`).
