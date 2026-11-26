@@ -23,7 +23,7 @@ def find_passes(base: str = "/kaggle/input") -> Path:
 
 def load_pass(folder: Path, name: str) -> tuple[pd.Index, list[dict]]:
     """Return the record ids and, for each record, its per-token arrays."""
-    z = np.load(folder / f"{name}.npz")
+    z = np.load(folder / f"{name}.npz", allow_pickle=True)  # the ids are strings; the files come from our own job
     off = z["offsets"]
     keys = [k for k in z.files if k not in ("ids", "offsets")]
     arrays = {k: z[k] for k in keys}
