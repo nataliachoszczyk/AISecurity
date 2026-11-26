@@ -64,3 +64,10 @@ Ideas, from the high expected value and low cost to the low value and high cost:
 New file: `src/webphoto.py`. It has all code of the web photo module, so that the shared files do not change.
 
 - Job `webphoto-v1` (CPU): ideas 1 to 4 on the passes of the earlier jobs.
+- Job `webphoto-v1` is complete. Results inside the web photos (TPR@5%FPR, mean and std over 2 folds x 5 seeds):
+  - The v8a features give 0.127 (0.028), AUC 0.621. Their log loss is 0.509, and the prior alone gives 0.514. Thus the log-odds are almost not better than the prior.
+  - A stronger regularization (C = 0.01) gives 0.147 (0.028), AUC 0.628, log loss 0.497. The gain is smaller than the std, but the calibration is better.
+  - Small feature sets, z-scores in bins of the caption length, the duplicate captions and the length give no gain.
+  - A fit together with the photographers gives 0.150 (0.041), but a worse log loss (0.529), because the photographers have fewer members.
+  - The blind scores (image file, caption words, account name) give AUC 0.48 to 0.52. Thus the data has no shift, as in a controlled benchmark.
+  - `img_gain` (own photo against a swapped photo) has AUC 0.48: the members depend less on their photo than the non-members.

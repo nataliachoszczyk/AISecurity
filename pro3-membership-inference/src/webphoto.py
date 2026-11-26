@@ -321,3 +321,119 @@ def run_matrix(source_type: str, device: str, out_dir: str, limit: int | None = 
     except Exception:
         traceback.print_exc()
         (out / f"error_{tag}.txt").write_text(traceback.format_exc())
+
+
+def matrix_features(folder: Path, tag: str) -> pd.DataFrame:
+    """Ranking features of each photo record from the pairs of its group (index: record id).
+
+    L[i, j] is the sum of log p of caption j with photo i. For the own pair (a, a):
+    - rank_img_*: the own photo against the other photos of the group, for the own caption,
+    - rank_cap_*: the own caption against the other captions, for the own photo, after the subtraction of the mean of
+      each caption over all photos (an image-caption PMI),
+    - flip_drop: the loss of log p with the flipped own photo.
+    """
+    pairs = pd.read_csv(folder / f"pairs_{tag}.csv")
+    own = pd.read_csv(folder / f"own_{tag}.csv").set_index("id")
+    rows = {}
+    for _, part in pairs.groupby("group"):
+        L = part.pivot(index="image_id", columns="caption_id", values="lp")
+        ids = L.index.intersection(L.columns)
+        L = L.loc[ids, ids].to_numpy()
+        P = L - L.mean(0, keepdims=True)
+        for a, rid in enumerate(ids):
+            n = own.loc[rid, "n_tokens"]
+            others = np.delete(L[:, a], a)
+            cap = np.delete(P[a], a)
+            rows[rid] = {"rank_own": L[a, a] / n,
+                         "rank_img_gain": (L[a, a] - others.mean()) / n,
+                         "rank_img_z": (L[a, a] - others.mean()) / (others.std() + 1e-6),
+                         "rank_img_pct": float((others < L[a, a]).mean()),
+                         "rank_cap_z": (P[a, a] - cap.mean()) / (cap.std() + 1e-6),
+                         "rank_cap_pct": float((cap < P[a, a]).mean()),
+                         "flip_drop": (L[a, a] - own.loc[rid, "lp_flip"]) / n}
+    feats = pd.DataFrame.from_dict(rows, orient="index")
+    renyi_cols = [c for c in own.columns if c.startswith("renyi_")]
+    return feats.join(-own[renyi_cols])  # a lower entropy suggests a member
+
+
+RANK = ["rank_img_gain", "rank_img_z", "rank_img_pct", "rank_cap_z", "rank_cap_pct", "flip_drop"]
+
+
+def load_hidden(folder: Path, tag: str) -> dict:
+    z = np.load(folder / f"hidden_{tag}.npz", allow_pickle=True)  # the ids are strings; the file comes from our own job
+    ids = pd.Index(z["ids"])
+    return {k: pd.DataFrame(z[k].astype(np.float32), index=ids) for k in z.files if k != "ids"}
+
+
+def probe_score(vectors: pd.DataFrame, C: float = 0.01, components: int = 64, extra_fit=None):
+    """Linear probe on a hidden vector of each record (Revisiting Data Auditing in LVLMs, 2025)."""
+    from sklearn.decomposition import PCA
+
+    def score(fit, evaluate):
+        train = fit if extra_fit is None else pd.concat([fit, extra_fit])
+        model = make_pipeline(StandardScaler(), PCA(components, random_state=0), LogisticRegression(C=C, max_iter=3000))
+        model.fit(vectors.loc[train["id"]].to_numpy(), train["member"])
+        return model.decision_function(vectors.loc[evaluate["id"]].to_numpy())
+    return score
+
+
+def stacked(columns, inner_fn, C: float = 1.0, name: str = "stack"):
+    """Logistic regression on the columns and on the out-of-fold score of a second model (inner_fn)."""
+    def score(fit, evaluate):
+        fit, evaluate = fit.copy(), evaluate.copy()
+        inner = make_folds(fit, 2, seed=123)
+        fit[name] = 0.0
+        for f in range(2):
+            fit.loc[fit.index[inner == f], name] = inner_fn(fit[inner != f], fit[inner == f])
+        evaluate[name] = inner_fn(fit, evaluate)
+        return lr_score(columns + [name], C)(fit, evaluate)
+    return score
+
+
+def matrix_data(records: pd.DataFrame) -> tuple[pd.DataFrame, Path]:
+    from .attacks import find_folder
+    folder = find_folder("pairs_web_photo.csv")
+    data = photo_data(records)
+    data = pd.concat([data, duplicate_features(data)], axis=1)
+    feats = pd.concat([matrix_features(folder, t) for t in ("web_photo", "photographer")])
+    return data.join(feats, on="id"), folder
+
+
+def explore_v2(out_dir: str) -> None:
+    """The ranking features, the target-free entropies and the probes on the hidden states."""
+    from .data import find_root, load_records
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    pd.set_option("display.width", 250)
+    data, folder = matrix_data(load_records(find_root()))
+    known_all = data[data["split"] == "known"].assign(member=lambda d: d["member"].astype(int))
+    known = known_all[known_all["source_type"] == WEB]
+    photographers = known_all[known_all["source_type"] == "photographer"]
+    print("check: corr of rank_own and loss", np.corrcoef(known["rank_own"], known["loss"])[0, 1], flush=True)
+    renyi_cols = [c for c in data.columns if c.startswith("renyi_")]
+    rows = [single_table(part, RANK + renyi_cols).assign(source_type=t) for t, part in
+            [(WEB, known), ("photographer", photographers)]]
+    single = pd.concat(rows)
+    single.to_csv(out / "single.csv", index=False)
+    print(single.to_string(), flush=True)
+    hidden = {k: pd.concat([v, load_hidden(folder, "photographer")[k]]) for k, v in load_hidden(folder, "web_photo").items()}
+    variants = {
+        "v8a base": lr_score(BASE),
+        "base + rank": lr_score(BASE + RANK),
+        "base + rank_img_z": lr_score(BASE + ["rank_img_z"]),
+        "base + rank_cap_z": lr_score(BASE + ["rank_cap_z"]),
+        "base + flip": lr_score(BASE + ["flip_drop"]),
+        "base + renyi": lr_score(BASE + renyi_cols),
+        "rank alone": lr_score(RANK),
+        "renyi alone": lr_score(renyi_cols),
+    }
+    for key, vectors in hidden.items():
+        variants[f"probe {key}"] = probe_score(vectors)
+        variants[f"probe {key} pooled"] = probe_score(vectors, extra_fit=photographers)
+    table = run_cv(known, variants)
+    best = table[table["variant"].str.startswith("probe")].sort_values("AUC mean").iloc[-1]["variant"]
+    key = best.split()[1]
+    pooled = photographers if best.endswith("pooled") else None
+    extra = run_cv(known, {f"base + {best}": stacked(BASE, probe_score(hidden[key], extra_fit=pooled))})
+    pd.concat([table, extra]).to_csv(out / "cv.csv", index=False)
+    data[["id", "source_type", "split", "member"] + RANK + renyi_cols].to_csv(out / "features.csv", index=False)
