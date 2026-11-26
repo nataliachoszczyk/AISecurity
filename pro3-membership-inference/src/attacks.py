@@ -144,3 +144,26 @@ def logistic_score(columns, C: float = 1.0):
             out.loc[part.index] = model.decision_function(part[cols])
         return out.to_numpy()
     return score
+
+
+TEXT_COLUMNS = ["loss", "zlib", "mink20", "minkpp20", "ref", "ref_ratio", "ref_median", "ref_top20", "ref_low20",
+                "ref_gain_frac", "ref_minkpp"]
+PHOTO_COLUMNS = ["loss", "minkpp20", "ref_img", "ref_txt", "txt_minkpp", "img_gain", "img_gain_top20", "img_vs_txt",
+                 "noise02_drop", "noise10_drop", "noise02_kl", "noise10_kl"]
+
+
+def columns_of(source_type: str) -> list[str]:
+    return PHOTO_COLUMNS if source_type in ("photographer", "web photo") else TEXT_COLUMNS
+
+
+def single_features(known: pd.DataFrame) -> pd.DataFrame:
+    """TPR@5%FPR and AUC of each feature alone, inside each source type. No fit, so no fold is necessary."""
+    from .metrics import auc, tpr_at_5fpr
+    rows = []
+    for source_type, part in known.groupby("source_type"):
+        labels = part["member"].astype(int)
+        for col in columns_of(source_type):
+            values = part[col].to_numpy()
+            rows.append({"source_type": source_type, "feature": col, "AUC": auc(values, labels),
+                         "TPR@5%FPR": tpr_at_5fpr(values.tolist(), labels.tolist())})
+    return pd.DataFrame(rows)
