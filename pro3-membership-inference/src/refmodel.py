@@ -108,7 +108,7 @@ def shadow_halves(records, seed: int = 1) -> np.ndarray:
     return half
 
 
-def run_shadow(half: int, device: str, out_dir: str, limit: int | None = None) -> None:
+def run_shadow(half: int, device: str, out_dir: str, limit: int | None = None, seed: int = 1, name: str = "shadow") -> None:
     """Train a shadow model on one half of all records (known and test, no labels), one epoch as in S1. Then score all records.
 
     Each record is IN for the model of its half and OUT for the other model.
@@ -120,9 +120,9 @@ def run_shadow(half: int, device: str, out_dir: str, limit: int | None = None) -
         from transformers import AutoModelForCausalLM, AutoTokenizer
         root = find_root()
         records = load_records(root)
-        records["half"] = shadow_halves(records)
+        records["half"] = shadow_halves(records, seed)
         if half == 0:
-            records[["id", "half"]].to_csv(out / "shadow_halves.csv", index=False)
+            records[["id", "half"]].to_csv(out / f"{name}_halves.csv", index=False)
         texts = records.loc[records["half"] == half, "content"].tolist()
         if limit:
             texts = texts[:limit]
@@ -132,8 +132,8 @@ def run_shadow(half: int, device: str, out_dir: str, limit: int | None = None) -
         train(llm, tok, texts, device, epochs=1)
         score = records.groupby("source_type").head(limit // 4) if limit else records
         with torch.no_grad():
-            caption_text_pass(llm, tok, score[score["kind"] == "photo"], device, out, f"shadow{half}_caption_text")
-            text_pass(llm, tok, score[score["kind"] == "text"], device, out, f"shadow{half}_text")
+            caption_text_pass(llm, tok, score[score["kind"] == "photo"], device, out, f"{name}{half}_caption_text")
+            text_pass(llm, tok, score[score["kind"] == "text"], device, out, f"{name}{half}_text")
     except Exception:
         traceback.print_exc()
         (out / f"error_half{half}.txt").write_text(traceback.format_exc())
