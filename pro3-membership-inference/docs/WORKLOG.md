@@ -19,3 +19,4 @@
 - Changed `src/eda.py`: it gives figures and tables for the notebook `notebooks/01_eda.ipynb`, not an HTML report.
 - Added `src/validation.py`: 2 folds that copy the relation between known and test (split inside each set owner), 5 seeds, the server metric for each fold.
 - Added the job `2026-11-26_03_eda-notebook` (CPU). It runs the notebook on Kaggle.
+- Job `eda-notebook` is complete. `notebooks/01_eda.ipynb` has all results and the conclusions.
