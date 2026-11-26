@@ -101,3 +101,22 @@ Limits of the check:
 
 - Added `src/photographer.py`, the one code file of the photographer module. It imports the features of `src/attacks.py` and changes no shared file.
 - Added the job `2026-11-27_50_photographer-v1` (CPU). It does the structure check on the test of all set types, the known CV, the honest owner check and the file `photographer_logodds.csv`.
+- Job `photographer-v1` is complete in 4 minutes. Results:
+  - The test structure of the text types is clear. Each type has 12 victims with all test records as members, and 8 hidden victims among the 40 other owners, also all members. The 8 full owners have no members. Thus each type has 280 test members.
+  - On the photographer test, the EM finds q_other 0.21 (8.5 hidden victims), r 0.88 and 251 expected members. The record score of attacks-v8a gives only 129.
+  - Known CV (other folds than the baseline): record 0.458 (std 0.105), record with the prior of the owner group 0.594 (std 0.053).
+  - Honest check (TPR@5%FPR, mean and std of 50 runs): record 0.631 (0.065), group prior alone 0.831 (0.045), mixture tau 1 0.972 (0.040), mixture tau 0.5 0.978 (0.037), owner mean w 3 0.956 (0.032).
+- The file `photographer_logodds.csv` has the ids and scores of test records. The repository is public, thus the file name now starts with `submission_` and git ignores it.
+- An incident: all worktrees share one git stash list. A `git stash pop` took the stash of the web photo agent. It was put back, and nothing was lost. Do not use `git stash` in a worktree.
+- Merged `origin/pro3-experiments` (the global simulation `explore_v9` and `owner_prior_shift` of the coordinator).
+- Changed `src/photographer.py` after the comments of the coordinator:
+  - New scenarios of the honest check break the assumptions of the mixture. Each scenario changes one item:
+    - victims with 75% members,
+    - clean owners with approximately 4% members,
+    - 3 or 12 hidden victims,
+    - all three errors together.
+  - The check compares the mixture with `owner_prior_shift(w=1)`, the baseline of the coordinator.
+  - `global_sim` runs the global simulation of `explore_v9` with the mixture log-odds for the photographer records.
+  - `set_logodds` gives the log-odds of any set type, so that the coordinator can also use it on the text types.
+  - Removed `explore_v1`, `owner_z` and the owner mean with w 1. The job `photographer-v1` ran the commit `f3c7b19`.
+- Added the job `2026-11-27_51_photographer-v2` (CPU). Record variants, one change each against v6: C 0.1, the entropy features (MaxRényi-K% with alpha 1, gains over the OUT photo shadow models), the PLIRA features.

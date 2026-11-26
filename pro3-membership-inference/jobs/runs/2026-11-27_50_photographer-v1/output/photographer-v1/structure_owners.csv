@@ -1,0 +1,21 @@
+source_type,group,owner rate,owners
+writer,full,"(-0.01, 0.1]",8
+writer,other,"(-0.01, 0.1]",32
+writer,other,"(0.9, 1.0]",8
+writer,victim,"(0.9, 1.0]",12
+research group,full,"(-0.01, 0.1]",8
+research group,other,"(-0.01, 0.1]",32
+research group,other,"(0.9, 1.0]",8
+research group,victim,"(0.9, 1.0]",12
+podcast,full,"(-0.01, 0.1]",6
+podcast,other,"(-0.01, 0.1]",20
+podcast,other,"(0.7, 0.9]",1
+podcast,other,"(0.9, 1.0]",5
+podcast,victim,"(0.9, 1.0]",8
+photographer,full,"(-0.01, 0.1]",8
+photographer,other,"(-0.01, 0.1]",31
+photographer,other,"(0.5, 0.7]",2
+photographer,other,"(0.7, 0.9]",5
+photographer,other,"(0.9, 1.0]",2
+photographer,victim,"(0.7, 0.9]",5
+photographer,victim,"(0.9, 1.0]",7

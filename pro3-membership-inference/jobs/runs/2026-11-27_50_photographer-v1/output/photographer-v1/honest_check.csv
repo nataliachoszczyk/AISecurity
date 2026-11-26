@@ -1,0 +1,8 @@
+variant,TPR@5%FPR mean,TPR@5%FPR std,AUC mean,AUC std
+record,0.631,0.065,0.922,0.014
+mixture tau=1.0,0.972,0.04,0.994,0.005
+group prior,0.831,0.045,0.968,0.008
+mixture tau=0.5,0.978,0.037,0.997,0.002
+owner mean w=1.0,0.919,0.039,0.986,0.005
+owner mean w=3.0,0.956,0.032,0.995,0.002
+owner z w=1,0.858,0.051,0.978,0.008
