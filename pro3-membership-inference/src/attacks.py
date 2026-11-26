@@ -445,3 +445,69 @@ def explore_v3(out_dir: str) -> None:
     print(table.to_string(), flush=True)
     for w in (0.0, 0.5, 1.0, 2.0):
         submission(data, columns_of, w).to_csv(out / f"submission_w{w}.csv", index=False)
+
+
+def two_stage(data: pd.DataFrame, fit_index, columns, owner_split: str, C: float = 1.0, seed: int = 0) -> pd.Series:
+    """Calibrated log-odds of each record in two stages.
+
+    Stage 1: record log-odds. The fit records get out-of-fold values (2 inner folds), so that stage 2 sees honest values.
+    Stage 2: for each set type, a logistic regression on [record log-odds, owner mean]. The owner mean of the fit records
+    uses the known records. The owner mean of the other records uses the split owner_split ("known" in the validation,
+    "test" for the submission). Single records keep the stage-1 log-odds.
+    """
+    from .validation import make_folds
+    fit_index = pd.Index(fit_index)
+    logodds = record_logodds(data, fit_index, columns, C)
+    inner = make_folds(data.loc[fit_index], 2, seed + 100)
+    for f in range(2):
+        part = record_logodds(data, fit_index[inner != f], columns, C)
+        logodds.loc[fit_index[inner == f]] = part.loc[fit_index[inner == f]]
+    owner = owner_mean(data, logodds, owner_split)
+    owner.loc[fit_index] = owner_mean(data, logodds, "known").loc[fit_index]
+    out = logodds.copy()
+    for source_type in SET_TYPES:
+        is_type = data["source_type"] == source_type
+        train = fit_index[is_type.loc[fit_index].to_numpy()]
+        if train.empty:
+            continue
+        x = pd.DataFrame({"record": logodds, "owner": owner})
+        model = LogisticRegression(max_iter=1000).fit(x.loc[train], data.loc[train, "member"].astype(int))
+        out.loc[is_type] = model.decision_function(x.loc[is_type])
+    return out
+
+
+def two_stage_cross_validate(data: pd.DataFrame, columns, C: float = 1.0, seeds=range(5)) -> pd.DataFrame:
+    from .metrics import auc, tpr_at_5fpr
+    from .validation import make_folds
+    known = data[data["split"] == "known"]
+    rows = []
+    for seed in seeds:
+        fold = pd.Series(make_folds(known, 2, seed), index=known.index)
+        for f in range(2):
+            evaluate = fold.index[fold == f]
+            for variant, score in [("record", record_logodds(data, fold.index[fold != f], columns, C)),
+                                   ("two stage", two_stage(data, fold.index[fold != f], columns, "known", C, seed))]:
+                for name, idx in [("all", evaluate)] + list(data.loc[evaluate].groupby("source_type").groups.items()):
+                    labels = data.loc[idx, "member"].astype(int)
+                    rows.append({"variant": variant, "records": name, "seed": seed, "fold": f,
+                                 "TPR@5%FPR": tpr_at_5fpr(score.loc[idx].tolist(), labels.tolist()),
+                                 "AUC": auc(score.loc[idx], labels)})
+    results = pd.DataFrame(rows)
+    return results.groupby(["variant", "records"], sort=False)[["TPR@5%FPR", "AUC"]].agg(["mean", "std"]).round(3)
+
+
+def explore_v5(out_dir: str) -> None:
+    """Validation of the two-stage score, and its submission file."""
+    from .data import find_root, load_records
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    records = load_records(find_root())
+    data = pd.concat([records, all_features(find_passes(), records)], axis=1)
+    pd.set_option("display.width", 200)
+    table = two_stage_cross_validate(data, columns_of)
+    table.to_csv(out / "two_stage_cv.csv")
+    print(table.to_string(), flush=True)
+    score = two_stage(data, data.index[data["split"] == "known"], columns_of, "test")
+    test = data["split"] == "test"
+    pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / "submission.csv", index=False)
+    print(data.loc[test].assign(p=1 / (1 + np.exp(-score[test]))).groupby("source_type")["p"].agg(["mean", "sum"]).round(3))
