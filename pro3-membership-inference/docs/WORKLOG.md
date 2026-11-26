@@ -41,6 +41,15 @@
 - Job `attacks-v6`: TPR@5%FPR of the record score on known: 0.63 (v1: 0.47). Forum posts 0.84, writers 0.92, research groups 1.00, podcasts 1.00, photographers 0.50, web photos 0.11. The best feature is the gain of BUMAS-mini over the OUT shadow model.
 - Added the photo shadow models (job `photo-shadow`, 4 half splits, 8 models in the S3 format) and a second pair of text shadow models (job `shadow-b`).
 
+## 2026-11-27 (coordinator, branch `pro3-experiments`)
+
+- Started two agents on their own branches and Kaggle accounts: web photo (`pro3-webphoto`, `jankombajn`, jobs 30 to 49) and photographer (`pro3-photographer`, `nataliachoszczyk`, jobs 50 to 69).
+- Job `attacks-v8a`: CV TPR@5%FPR of all known records 0.631 (std 0.021). The first submission of its file gave 0.774 on the public part.
+- Added a simulation of the test metric to `src/attacks.py` (`explore_v9`). Known records get weights, so that each source type has its expected test mix of members and non-members.
+- Added the owner prior: in the set types, the prior of the owner (from its other records) replaces the prior of the source type in the record log-odds.
+- Job `attacks-v9`: the simulation gives 0.741 at w = 0 (public: 0.774). Thus the simulation is a usable check of the global metric.
+- Web photos, forum posts and photographers give most false positives at the global threshold. The owner prior gives 0.756 (w = 1) and helps photographers and writers.
+
 ## 2026-11-27 (branch `pro3-photographer`)
 
 The branch `pro3-photographer` comes from `pro3-experiments`. It holds the work on the photographer records. The Kaggle account is `nataliachoszczyk`, the job numbers are 50 to 69.

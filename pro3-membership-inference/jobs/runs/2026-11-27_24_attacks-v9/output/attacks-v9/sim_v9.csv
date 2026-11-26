@@ -1,0 +1,6 @@
+,all,all,tpr forum post,tpr forum post,fp forum post,fp forum post,tpr photographer,tpr photographer,fp photographer,fp photographer,tpr podcast,tpr podcast,fp podcast,fp podcast,tpr research group,tpr research group,fp research group,fp research group,tpr web photo,tpr web photo,fp web photo,fp web photo,tpr writer,tpr writer,fp writer,fp writer
+,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std,mean,std
+w,,,,,,,,,,,,,,,,,,,,,,,,,,
+0.0,0.741,0.021,0.835,0.045,24.652,5.432,0.558,0.051,22.889,3.755,0.944,0.069,0.479,0.814,0.978,0.022,1.087,0.725,0.218,0.034,41.79,2.959,0.833,0.052,6.064,3.238
+0.5,0.753,0.021,0.83,0.045,23.17,5.38,0.606,0.055,26.255,3.604,0.95,0.057,0.958,1.01,0.983,0.014,1.196,0.952,0.198,0.022,35.653,3.674,0.872,0.046,9.725,4.357
+1.0,0.756,0.019,0.819,0.041,20.596,4.492,0.647,0.044,30.16,2.853,0.956,0.051,1.629,1.111,0.986,0.015,2.826,1.276,0.158,0.022,27.251,3.836,0.9,0.046,14.53,6.007
