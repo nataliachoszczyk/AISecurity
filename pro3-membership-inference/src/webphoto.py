@@ -437,3 +437,54 @@ def explore_v2(out_dir: str) -> None:
     extra = run_cv(known, {f"base + {best}": stacked(BASE, probe_score(hidden[key], extra_fit=pooled))})
     pd.concat([table, extra]).to_csv(out / "cv.csv", index=False)
     data[["id", "source_type", "split", "member"] + RANK + renyi_cols].to_csv(out / "features.csv", index=False)
+
+
+def run_grad(source_type: str, device: str, out_dir: str, limit: int | None = None) -> None:
+    """Gradient norms of the caption loss of each own pair (S3 format), for each block of the model.
+
+    A member had one training step on its pair, so its gradient can be smaller than the gradient of a non-member
+    with the same loss. The gradient of the image tokens shows how much the caption depends on the photo.
+    """
+    import time
+    import traceback
+
+    import torch
+    from .data import find_root, load_records
+    from .logprobs import import_openbumas
+    torch.cuda.set_device(device)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    tag = source_type.replace(" ", "_")
+    try:
+        root = find_root()
+        ob = import_openbumas(root)
+        records = load_records(root)
+        photos = records[records["source_type"] == source_type].reset_index(drop=True)
+        if limit:
+            photos = photos.head(limit)
+        model = ob.BUMASMini.load(root / "model", dtype=torch.float32).to(device).eval()
+        blocks = {"connector": list(model.connector.parameters()), "embed": [model.llm.get_input_embeddings().weight],
+                  **{f"layer{i}": list(layer.parameters()) for i, layer in enumerate(model.llm.model.layers)}}
+        rows, t0 = [], time.time()
+        for k in range(len(photos)):
+            encoded = [ob.caption_example(model.tok, photos["caption"].iloc[k] or "")]
+            pixels = ob.load_image(photos["image_path"].iloc[k])[None].to(device)
+            img = model.encode_images(pixels)
+            img.retain_grad()
+            _, emb, mask, labels = batch_inputs(model, img, encoded, device)
+            h = model.llm.model(inputs_embeds=emb, attention_mask=mask).last_hidden_state[:, :-1]
+            target = labels[:, 1:]
+            sel = target != -100
+            loss = torch.nn.functional.cross_entropy(model.llm.lm_head(h[sel]).float(), target[sel])
+            model.zero_grad(set_to_none=True)
+            loss.backward()
+            row = {"id": photos["id"].iloc[k], "grad_loss": loss.item(), "grad_img": img.grad.norm().item()}
+            for name, params in blocks.items():
+                row[f"grad_{name}"] = float(torch.sqrt(sum((p.grad.float() ** 2).sum() for p in params if p.grad is not None)))
+            rows.append(row)
+            if k % 500 == 0:
+                print(f"{source_type}: {k}/{len(photos)}, {time.time() - t0:.0f} s", flush=True)
+        pd.DataFrame(rows).to_csv(out / f"grad_{tag}.csv", index=False)
+    except Exception:
+        traceback.print_exc()
+        (out / f"error_grad_{tag}.txt").write_text(traceback.format_exc())
