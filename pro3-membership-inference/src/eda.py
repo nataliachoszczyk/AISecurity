@@ -93,10 +93,9 @@ def plot_member_rate(d: Data):
     ax.barh(d.types, rate, color=MEMBER, height=0.6)
     for y, value in enumerate(rate):
         ax.text(value + 0.01, y, f"{value:.3f}", va="center", color=INK2)
-    ax.axvline(d.known["member"].mean(), color=INK2, linestyle="--", linewidth=1)
     ax.invert_yaxis()
-    ax.set_xlim(0, 1)
-    ax.set_xlabel("fraction of members in known (dashed line: all known records)")
+    ax.set_xlim(0, 0.3)
+    ax.set_xlabel(f"fraction of members in known (all known records: {d.known['member'].mean():.3f})")
     ax.grid(axis="y", visible=False)
     return fig
 
@@ -157,17 +156,16 @@ def plot_lengths(d: Data):
     for ax, t in zip(axes.flat, d.types):
         part = d.known[d.known["source_type"] == t]
         lengths = part["length"].clip(lower=1)
-        bins = np.geomspace(lengths.min(), lengths.max() + 1, 25)
+        bins = np.linspace(lengths.min(), lengths.max() + 1, 25)
         for label, color, name in ((1, MEMBER, "member"), (0, NONMEMBER, "non-member")):
             ax.hist(lengths[part["member"] == label], bins=bins, histtype="step", linewidth=2, color=color,
                     density=True, label=name)
-        ax.set_xscale("log")
         ax.set_title(t, fontsize=10, color=INK)
         ax.set_yticks([])
     for ax in list(axes.flat)[len(d.types):]:
         ax.axis("off")
     axes.flat[0].legend(frameon=False)
-    fig.supxlabel(f"length of the content in {d.unit} (log scale)", color=INK2)
+    fig.supxlabel(f"length of the content in {d.unit}", color=INK2)
     fig.tight_layout()
     return fig
 
