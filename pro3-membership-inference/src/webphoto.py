@@ -19,10 +19,14 @@ WEB = "web photo"
 BASE = PHOTO_COLUMNS + V6_PHOTO  # the v8a features of the photo types
 
 
-def photo_data(records: pd.DataFrame) -> pd.DataFrame:
-    """All photo records with the features of attacks-v8a and of the photo shadow models."""
-    data = pd.concat([records, all_features(find_passes(), records), v6_features(records, ("shadow",)),
+def full_data(records: pd.DataFrame) -> pd.DataFrame:
+    """All records with the features of attacks-v8a and, for the photos, of the photo shadow models."""
+    return pd.concat([records, all_features(find_passes(), records), v6_features(records, ("shadow",)),
                       photo_shadow_features(records)], axis=1)
+
+
+def photo_data(records: pd.DataFrame) -> pd.DataFrame:
+    data = full_data(records)
     return data[data["kind"] == "photo"].copy()
 
 
@@ -390,43 +394,73 @@ def stacked(columns, inner_fn, C: float = 1.0, name: str = "stack"):
     return score
 
 
-def matrix_data(records: pd.DataFrame) -> tuple[pd.DataFrame, Path]:
+def prior_score(fit, evaluate):
+    """The log-odds of the member rate of the fit part, the same for all records."""
+    rate = fit["member"].mean()
+    return np.full(len(evaluate), np.log(rate / (1 - rate)))
+
+
+def grad_features(folder: Path, tag: str) -> pd.DataFrame:
+    """Logarithms of the gradient norms (index: record id)."""
+    g = pd.read_csv(folder / f"grad_{tag}.csv").set_index("id")
+    return np.log(g.clip(lower=1e-12)).add_prefix("log_")
+
+
+def module_data(records: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, Path]:
+    """All records with the v8a features, and the photo records with the features of this module."""
     from .attacks import find_folder
     folder = find_folder("pairs_web_photo.csv")
-    data = photo_data(records)
-    data = pd.concat([data, duplicate_features(data)], axis=1)
-    feats = pd.concat([matrix_features(folder, t) for t in ("web_photo", "photographer")])
-    return data.join(feats, on="id"), folder
+    data = full_data(records)
+    photos = data[data["kind"] == "photo"].copy()
+    photos = pd.concat([photos, duplicate_features(photos)], axis=1)
+    photos = photos.join(pd.concat([matrix_features(folder, t) for t in ("web_photo", "photographer")]), on="id")
+    try:
+        grad_folder = find_folder("grad_web_photo.csv")
+        photos = photos.join(pd.concat([grad_features(grad_folder, t) for t in ("web_photo", "photographer")]), on="id")
+    except FileNotFoundError:
+        print("no gradient features", flush=True)
+    return data, photos, folder
 
 
 def explore_v2(out_dir: str) -> None:
-    """The ranking features, the target-free entropies and the probes on the hidden states."""
+    """The ranking features, the target-free entropies, the gradient norms and the probes on the hidden states.
+
+    The last part is the simulation of the global test metric with the web photo log-odds of the main variants.
+    """
     from .data import find_root, load_records
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     pd.set_option("display.width", 250)
-    data, folder = matrix_data(load_records(find_root()))
-    known_all = data[data["split"] == "known"].assign(member=lambda d: d["member"].astype(int))
+    data, photos, folder = module_data(load_records(find_root()))
+    known_all = photos[photos["split"] == "known"].assign(member=lambda d: d["member"].astype(int))
     known = known_all[known_all["source_type"] == WEB]
     photographers = known_all[known_all["source_type"] == "photographer"]
     print("check: corr of rank_own and loss", np.corrcoef(known["rank_own"], known["loss"])[0, 1], flush=True)
-    renyi_cols = [c for c in data.columns if c.startswith("renyi_")]
-    rows = [single_table(part, RANK + renyi_cols).assign(source_type=t) for t, part in
+    renyi_cols = [c for c in photos.columns if c.startswith("renyi_")]
+    grad_cols = [c for c in photos.columns if c.startswith("log_grad")]
+    rows = [single_table(part, RANK + renyi_cols + grad_cols).assign(source_type=t) for t, part in
             [(WEB, known), ("photographer", photographers)]]
     single = pd.concat(rows)
     single.to_csv(out / "single.csv", index=False)
     print(single.to_string(), flush=True)
     hidden = {k: pd.concat([v, load_hidden(folder, "photographer")[k]]) for k, v in load_hidden(folder, "web_photo").items()}
     variants = {
+        "prior": prior_score,
         "v8a base": lr_score(BASE),
+        "base C=0.01": lr_score(BASE, 0.01),
         "base + rank": lr_score(BASE + RANK),
+        "base + rank C=0.01": lr_score(BASE + RANK, 0.01),
         "base + rank_img_z": lr_score(BASE + ["rank_img_z"]),
         "base + rank_cap_z": lr_score(BASE + ["rank_cap_z"]),
         "base + flip": lr_score(BASE + ["flip_drop"]),
         "base + renyi": lr_score(BASE + renyi_cols),
+        "base + renyi C=0.01": lr_score(BASE + renyi_cols, 0.01),
         "rank alone": lr_score(RANK),
         "renyi alone": lr_score(renyi_cols),
     }
+    if grad_cols:
+        variants.update({"grad alone": lr_score(grad_cols), "base + grad": lr_score(BASE + grad_cols),
+                         "base + grad C=0.01": lr_score(BASE + grad_cols, 0.01)})
     for key, vectors in hidden.items():
         variants[f"probe {key}"] = probe_score(vectors)
         variants[f"probe {key} pooled"] = probe_score(vectors, extra_fit=photographers)
@@ -436,7 +470,11 @@ def explore_v2(out_dir: str) -> None:
     pooled = photographers if best.endswith("pooled") else None
     extra = run_cv(known, {f"base + {best}": stacked(BASE, probe_score(hidden[key], extra_fit=pooled))})
     pd.concat([table, extra]).to_csv(out / "cv.csv", index=False)
-    data[["id", "source_type", "split", "member"] + RANK + renyi_cols].to_csv(out / "features.csv", index=False)
+    photos[["id", "source_type", "split", "member"] + RANK + renyi_cols + grad_cols].to_csv(out / "features.csv", index=False)
+    sim_variants = {name: variants[name] for name in ("prior", "base C=0.01", "base + rank C=0.01", "base + renyi C=0.01")}
+    sim = global_sim(data, photos[photos["source_type"] == WEB], sim_variants)
+    sim.to_csv(out / "sim.csv", index=False)
+    print(sim.to_string(), flush=True)
 
 
 def run_grad(source_type: str, device: str, out_dir: str, limit: int | None = None) -> None:
@@ -488,3 +526,44 @@ def run_grad(source_type: str, device: str, out_dir: str, limit: int | None = No
     except Exception:
         traceback.print_exc()
         (out / f"error_grad_{tag}.txt").write_text(traceback.format_exc())
+
+
+def global_sim(data: pd.DataFrame, web: pd.DataFrame, web_fns: dict, owner_w=(0.0, 1.0), seeds=range(5)) -> pd.DataFrame:
+    """The test metric simulation of attacks-v9, with the web photo log-odds of each variant in place of the v8a log-odds.
+
+    data: all records with the v8a features. web: the web photo records with the features of this module.
+    The weights of the records come from the v8a fit, so all variants use the same weights.
+    """
+    from .attacks import owner_prior_shift, record_logodds, test_like_weights, v6_columns_of, weighted_tpr_at_5fpr
+    known_index = data.index[data["split"] == "known"]
+    test = data["split"] == "test"
+    full = record_logodds(data, known_index, v6_columns_of)
+    expected = (1 / (1 + np.exp(-full[test]))).groupby(data.loc[test, "source_type"]).sum()
+    known = data.loc[known_index].assign(member=lambda d: d["member"].astype(int))
+    sample_w = test_like_weights(known, expected, data.loc[test, "source_type"].value_counts())
+    web_known = web[web["split"] == "known"].assign(member=lambda d: d["member"].astype(int))
+    rows = []
+    for seed in seeds:
+        fold = make_folds(known, 2, seed)
+        for f in range(2):
+            logodds = record_logodds(data, known_index[fold != f], v6_columns_of)
+            ev = known_index[fold == f]
+            labels, sw = known.loc[ev, "member"].to_numpy(), sample_w[fold == f]
+            types = known.loc[ev, "source_type"].to_numpy()
+            fit_web = web_known.loc[web_known.index.intersection(known_index[fold != f])]
+            ev_web = web_known.loc[web_known.index.intersection(ev)]
+            for name, fn in {"v8a": None, **web_fns}.items():
+                score_all = logodds.copy()
+                if fn is not None:
+                    score_all.loc[ev_web.index] = fn(fit_web, ev_web)
+                for w in owner_w:
+                    score = owner_prior_shift(data, score_all, "known", w).loc[ev].to_numpy()
+                    tpr, threshold = weighted_tpr_at_5fpr(score, labels, sw)
+                    sel = types == WEB
+                    rows.append({"variant": name, "w": w, "all": tpr,
+                                 "tpr web": (score[sel & (labels == 1)] >= threshold).mean(),
+                                 "fp web": (sw[sel & (labels == 0)] * (score[sel & (labels == 0)] >= threshold)).sum(),
+                                 "fp all": (sw[labels == 0] * (score[labels == 0] >= threshold)).sum()})
+    table = pd.DataFrame(rows).groupby(["variant", "w"], sort=False).agg(["mean", "std"]).round(3)
+    table.columns = [f"{a} {b}" for a, b in table.columns]
+    return table.reset_index()
