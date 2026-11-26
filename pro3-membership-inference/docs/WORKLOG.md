@@ -40,3 +40,27 @@
 - Added two shadow models (job `shadow`): Qwen3-0.6B-Base trained for one epoch on one random half of all records. Each record is IN for one model and OUT for the other.
 - Job `attacks-v6`: TPR@5%FPR of the record score on known: 0.63 (v1: 0.47). Forum posts 0.84, writers 0.92, research groups 1.00, podcasts 1.00, photographers 0.50, web photos 0.11. The best feature is the gain of BUMAS-mini over the OUT shadow model.
 - Added the photo shadow models (job `photo-shadow`, 4 half splits, 8 models in the S3 format) and a second pair of text shadow models (job `shadow-b`).
+
+## 2026-11-27 (branch `pro3-webphoto`, module for the web photos)
+
+Research summary for the web photos. A web photo is one image with a short caption (approximately 24 tokens). S3 used each member one time.
+
+- Li et al. 2024 (VL-MIA, arXiv:2411.02902): MaxRényi-K%, a target-free entropy of the logits on the image positions and on the text positions. AUC 0.70 to 0.80 on VL-MIA, but these sets have a shift of the data.
+- Revisiting Data Auditing in LVLMs (arXiv:2504.18349): a blind image classifier gets AUC 0.99 on VL-MIA/Flickr. On sets without a shift, all logit attacks give AUC 0.45 to 0.57. Probes on the hidden states give up to 0.65.
+- OpenLVLM-MIA (arXiv:2510.16295): a controlled benchmark of the stages of LLaVA. All attacks give AUC 0.41 to 0.53 and TPR@5%FPR below 0.08.
+- Newer black-box attacks (CSA-MIA arXiv:2605.17341, DistractMIA arXiv:2605.12574) use the generated text and an image-text encoder. Our access to the logits is stronger, so these attacks add little.
+- Conclusion: a single caption exposure gives a weak signal. Our AUC 0.61 is already above most results on sets without a shift.
+
+Ideas, from the high expected value and low cost to the low value and high cost:
+
+1. Blind check (CPU): the caption words, the account name and the image file. A shift of the data gives a strong signal, as in the papers above.
+2. Calibration (CPU): fewer features and a stronger regularization. If the signal stays weak, the correct output is a low log-odds near the prior, so that the web photos do not hurt the shared threshold.
+3. z-scores of the features against the known non-members inside bins of the caption length (the idea of the best team for the photos).
+4. Duplicate captions (CPU): the member of a group with the same caption has a higher log p than the other photos of the group.
+5. Caption ranking (GPU): the log p of the caption with its own photo against the log p with 31 other photos. This gives a z-score of the own photo with a small noise, and a rank of the own caption for the photo.
+6. Target-free entropy (MaxRényi) on the image positions and on the caption positions (GPU, in the same pass).
+7. A linear probe on the hidden states of the image tokens and of the caption tokens (GPU pass, CPU fit). The papers show a small gain.
+
+New file: `src/webphoto.py`. It has all code of the web photo module, so that the shared files do not change.
+
+- Job `webphoto-v1` (CPU): ideas 1 to 4 on the passes of the earlier jobs.
