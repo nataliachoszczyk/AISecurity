@@ -386,36 +386,32 @@ def record_logodds(data: pd.DataFrame, fit_index, columns, C: float = 1.0) -> pd
     return out
 
 
-def owner_test_mean(data: pd.DataFrame, logodds: pd.Series) -> pd.Series:
-    """Dataset inference: the mean log-odds of the test records of the owner. A test record does not count itself.
+def owner_mean(data: pd.DataFrame, logodds: pd.Series, split: str) -> pd.Series:
+    """Dataset inference: the mean log-odds of the records of the owner in one split. A record does not count itself.
 
-    Test is the suspect part of a set. Known can be a part that the company did not use, so it does not count.
+    For test, the split is "test": test is the suspect part of a set. Known can be a part that the company did not use.
+    For the validation on known, the split is "known", so that each owner gives evidence from a similar number of records.
     The value is 0 for single records.
     """
-    is_test = (data["split"] == "test").astype(float)
-    total = (logodds * is_test).groupby(data["source"]).transform("sum") - logodds * is_test
-    count = is_test.groupby(data["source"]).transform("sum") - is_test
+    in_split = (data["split"] == split).astype(float)
+    total = (logodds * in_split).groupby(data["source"]).transform("sum") - logodds * in_split
+    count = in_split.groupby(data["source"]).transform("sum") - in_split
     mean = (total / count.replace(0, np.nan)).fillna(0.0)
     return mean.where(data["source_type"].isin(SET_TYPES), 0.0)
 
 
 def di_cross_validate(data: pd.DataFrame, columns, weights=(0.0, 0.5, 1.0, 2.0), C: float = 1.0, seeds=range(5)) -> pd.DataFrame:
-    """Validation of record log-odds + w * owner_test_mean on known.
-
-    The records of the owners with fewer known records than a victim are not evaluated: their known part has no member
-    by construction, but their test part can have members.
-    """
+    """Validation of record log-odds + w * owner_mean on all known records. The owner mean uses the known records."""
     from .metrics import auc, tpr_at_5fpr
     from .validation import make_folds
     known = data[data["split"] == "known"]
-    groups = owner_groups(data)
     rows = []
     for seed in seeds:
         fold = pd.Series(make_folds(known, 2, seed), index=known.index)
         for f in range(2):
             logodds = record_logodds(data, fold.index[fold != f], columns, C)
-            owner = owner_test_mean(data, logodds)
-            evaluate = fold.index[(fold == f) & (groups.loc[fold.index] != "other")]
+            owner = owner_mean(data, logodds, "known")
+            evaluate = fold.index[fold == f]
             for w in weights:
                 score = logodds + w * owner
                 for name, idx in [("all", evaluate)] + list(data.loc[evaluate].groupby("source_type").groups.items()):
@@ -431,7 +427,7 @@ def submission(data: pd.DataFrame, columns, w: float, C: float = 1.0) -> pd.Data
     """Scores of the test records: fit on all known records."""
     known_index = data.index[data["split"] == "known"]
     logodds = record_logodds(data, known_index, columns, C)
-    score = logodds + w * owner_test_mean(data, logodds)
+    score = logodds + w * owner_mean(data, logodds, "test")
     test = data["split"] == "test"
     return pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]})
 
