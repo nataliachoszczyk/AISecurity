@@ -80,3 +80,7 @@ New file: `src/webphoto.py`. It has all code of the web photo module, so that th
   - A fit together with the photographers gives 0.150 (0.041), but a worse log loss (0.529), because the photographers have fewer members.
   - The blind scores (image file, caption words, account name) give AUC 0.48 to 0.52. Thus the data has no shift, as in a controlled benchmark.
   - `img_gain` (own photo against a swapped photo) has AUC 0.48: the members depend less on their photo than the non-members.
+- Added `run_matrix` to `src/webphoto.py` (ideas 5 and 6). Each photo goes into a random group of 32 photos of its type. The pass scores each caption of the group with each photo of the group. It also scores the own caption with the flipped photo. For the own pair, it keeps the Renyi entropies and the mean hidden states (layers 14 and 28, image tokens and caption tokens).
+- Job `webphoto-matrix-smoke` (40 photos of each type): complete, no error.
+- Added `run_grad`: the gradient norms of the caption loss of the own pair for the connector, the embeddings, each LLM layer and the image tokens. Job `webphoto-grad-smoke` tests it.
+- Merged `pro3-experiments` into `pro3-webphoto` for the simulation of the global metric (`explore_v9`). Added `global_sim`: it puts the web photo log-odds of a variant in place of the v8a log-odds, and keeps the rest of v8a.
