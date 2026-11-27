@@ -816,10 +816,11 @@ def explore_v9(out_dir: str, shadow_names=("shadow",), weights=(0.0, 0.5, 1.0)) 
         pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / f"submission_v9_w{w}.csv", index=False)
 
 
-def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | None = None) -> None:
+def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | None = None, single_C: dict | None = None) -> None:
     """The merged score: the owner mixture (src/photographer.py) for all set types, the record score for the single types.
 
     single_files can replace the log-odds of a single type with a file (columns id, logodds) of a module.
+    single_C gives a different C of the regression to a single type (job webphoto-v3: C = 0.01 for web photos).
     The global simulation on known uses the expected test members of the merged score as the weights.
     """
     from .data import find_root, load_records
@@ -833,7 +834,14 @@ def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | Non
     data["group"] = owner_groups(data)
     known_index = data.index[data["split"] == "known"]
     test = data["split"] == "test"
-    score = record_logodds(data, known_index, v6_columns_of)
+    def singles_logodds(fit_index):
+        out = record_logodds(data, fit_index, v6_columns_of)
+        for source_type, C in (single_C or {}).items():
+            sel = data["source_type"] == source_type
+            out[sel] = record_logodds(data[sel], fit_index.intersection(data.index[sel]), v6_columns_of, C)
+        return out
+
+    score = singles_logodds(known_index)
     for source_type in SET_TYPES:
         part = set_logodds(data, source_type).set_index("id")["logodds"]
         sel = data["source_type"] == source_type
@@ -852,7 +860,7 @@ def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | Non
         fold = make_folds(known, 2, seed)
         for f in range(2):
             fit_index, ev = known_index[fold != f], known_index[fold == f]
-            sim = record_logodds(data, fit_index, v6_columns_of)
+            sim = singles_logodds(fit_index)
             for source_type in SET_TYPES:
                 mixed = known_mixture(data, fit_index, ev, source_type)
                 sim[mixed.index] = mixed
