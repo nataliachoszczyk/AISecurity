@@ -180,7 +180,7 @@ def explore(out_dir: str, variants: dict, extra=()) -> None:
     folds = {seed: baseline_folds(data, seed) for seed in range(5)}
     known = data[(data["source_type"] == FORUM) & (data["split"] == "known")].copy()
     known["member"] = known["member"].astype(int)
-    new = [c for c in data.columns if c in LENGTH + RECALL or c.startswith("f_")]
+    new = [c for c in data.columns if c in LENGTH or c.startswith("f_")]
     single = pd.DataFrame([{"feature": c, **metrics_row(known[c].to_numpy(), known["member"])}
                            for c in ["lira_gain"] + new]).round(3)
     rows = pd.concat([forum_cv(known, cols(v6_columns_of(FORUM)), folds, C).assign(variant=name)
@@ -198,130 +198,6 @@ def explore(out_dir: str, variants: dict, extra=()) -> None:
     forum_logodds(data, cols(v6_columns_of(FORUM)), C).to_csv(out / "submission_forum_logodds.csv", index=False)
 
 
-# Variants of the job forum-v1: one change each against v6 (C 1).
-V1 = {
-    "v6": (lambda base: base, 1.0),
-    "v6 C=0.1": (lambda base: base, 0.1),
-    "v6 + length": (lambda base: base + LENGTH, 1.0),
-    "v6 + length C=0.1": (lambda base: base + LENGTH, 0.1),
-}
-
-
-def explore_v1(out_dir: str) -> None:
-    explore(out_dir, V1, extra=(token_features,))
-
-
-PREFIX_POSTS = 4  # known non-member forum posts in the ReCaLL prefix
-
-
-def prefix_ids(records: pd.DataFrame) -> list[str]:
-    """Ids of the known non-member forum posts of the ReCaLL prefix (a fixed random choice)."""
-    pool = records[(records["source_type"] == FORUM) & (records["split"] == "known") & (records["member"] == 0)]
-    return pool.sample(PREFIX_POSTS, random_state=0)["id"].tolist()
-
-
-def run_recall(model_name: str, device: str, out_dir: str, limit: int | None = None) -> None:
-    """ReCaLL (Xie et al. 2024): log p of each forum post after a prefix of known non-member forum posts.
-
-    model_name: 'bumas' (the LLM of BUMAS-mini) or 'qwen' (the reference model, for the calibration).
-    The tokens of the post have the same format as in src/logprobs.py, with the prefix and EOT before them.
-    """
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    from .logprobs import import_openbumas, reference_path, save, token_stats
-    torch.cuda.set_device(device)
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    try:
-        root = find_root()
-        records = load_records(root)
-        forum = records[records["source_type"] == FORUM]
-        tok = AutoTokenizer.from_pretrained(root / "model" / "llm")
-        if model_name == "bumas":
-            llm = import_openbumas(root).BUMASMini.load(root / "model", dtype=torch.float32).llm.to(device).eval()
-        else:
-            llm = AutoModelForCausalLM.from_pretrained(reference_path(), dtype=torch.float32).to(device).eval()
-        chosen = prefix_ids(records)
-        pd.Series(chosen, name="id").to_csv(out / "recall_prefix.csv", index=False)
-        eot = tok.convert_tokens_to_ids("<|endoftext|>")
-        prefix = [eot]
-        for text in forum.set_index("id").loc[chosen, "content"]:
-            prefix += tok(text.strip() + "<|endoftext|>", add_special_tokens=False)["input_ids"]
-        score = forum.head(limit) if limit else forum
-        rows, t0 = [], time.time()
-        with torch.no_grad():
-            for i, text in enumerate(score["content"]):
-                post = tok(text.strip() + "<|endoftext|>", add_special_tokens=False)["input_ids"][:2048 - len(prefix)]
-                ids = torch.tensor(prefix + post, device=device)
-                logits = llm(input_ids=ids[None]).logits[0, len(prefix) - 1:-1]
-                rows.append(token_stats(logits, ids[len(prefix):]))
-                if i % 500 == 0:
-                    print(f"recall {model_name}: {i}/{len(score)} records, {time.time() - t0:.0f} s", flush=True)
-        save(out / f"recall_{model_name}_text.npz", score["id"], rows)
-    except Exception:
-        traceback.print_exc()
-        (out / f"error_{model_name}.txt").write_text(traceback.format_exc())
-
-
-def recall_features(records: pd.DataFrame) -> pd.DataFrame:
-    """ReCaLL features: the change of the mean log p of a post after the non-member prefix, for BUMAS-mini and Qwen.
-
-    The posts of the prefix get the median value, because the prefix contains them.
-    """
-    from .attacks import find_folder, find_passes, load_pass
-    folder = find_folder("recall_bumas_text.npz")
-    out = {}
-    for key, cond_name, plain_name in [("t", "recall_bumas_text", "bumas_text"), ("q", "recall_qwen_text", "qwen_text")]:
-        ids, cond = load_pass(folder, cond_name)
-        p_ids, plain = load_pass(find_passes(), plain_name)
-        plain = dict(zip(p_ids, plain))
-        c = np.array([r["lp"].mean() for r in cond])
-        u = np.array([plain[rid]["lp"][:len(r["lp"])].mean() for rid, r in zip(ids, cond)])
-        out[f"recall_{key}"] = pd.Series(c - u, index=ids)
-        out[f"recall_ratio_{key}"] = pd.Series(c / u, index=ids)
-    table = pd.DataFrame(out)
-    table["recall_diff"] = table["recall_t"] - table["recall_q"]
-    prefix = pd.read_csv(folder / "recall_prefix.csv")["id"]
-    is_prefix = table.index.isin(prefix)
-    for col in table.columns:
-        table.loc[is_prefix, col] = table.loc[~is_prefix, col].median()
-    return table.reindex(records["id"]).set_axis(records.index)
-
-
-RECALL = ["recall_t", "recall_ratio_t", "recall_q", "recall_ratio_q", "recall_diff"]
-
-
-# Variants of the job forum-v2: one change each against v6 (C 1).
-V2 = {
-    "v6": (lambda base: base, 1.0),
-    "v6 + forum shadow": (lambda base: base + FSHADOW, 1.0),
-    "v6 + recall": (lambda base: base + RECALL, 1.0),
-    "v6 + length": (lambda base: base + LENGTH, 1.0),
-    "v6 + forum shadow + length": (lambda base: base + FSHADOW + LENGTH, 1.0),
-}
-
-
-def explore_v2(out_dir: str) -> None:
-    explore(out_dir, V2, extra=(token_features, forum_shadow_features, recall_features))
-
-
-def feature_smoke(out_dir: str) -> None:
-    """Check the feature functions of the forum shadow models and ReCaLL on the outputs of the smoke jobs."""
-    from .photographer import load_data
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    data = load_data()
-    for fn in (forum_shadow_features, recall_features):
-        table = fn(data).dropna(how="all")
-        print(fn.__name__, len(table), "\n", table.describe().round(3).to_string(), flush=True)
-        table.describe().round(3).to_csv(out / f"{fn.__name__}.csv")
-
-
-def explore_v2a(out_dir: str) -> None:
-    """The variants of forum-v2 without the forum shadow models (their job runs longer)."""
-    variants = {k: v for k, v in V2.items() if "forum shadow" not in k}
-    explore(out_dir, variants, extra=(token_features, recall_features))
-
-
 def load_forum_data(shadow_names=("shadow",), extra=()) -> pd.DataFrame:
     """All records with the features of attacks.py (v6 with the given shadow pairs) and the extra feature functions."""
     from .attacks import all_features, find_passes, owner_groups, v6_features
@@ -332,22 +208,8 @@ def load_forum_data(shadow_names=("shadow",), extra=()) -> pd.DataFrame:
     return pd.concat([data] + [fn(data) for fn in extra], axis=1)
 
 
-# Variants of the job forum-v3: the best model of forum-v2 first, then one change each.
+# The three strong forum shadow features (job forum-v3: the other forum shadow features give no gain).
 STRONG = ["f_gain", "f_gain_t", "f_offline"]
-V3 = {
-    "v6 + forum shadow + length": (lambda base: base + FSHADOW + LENGTH, 1.0),
-    "v6 + forum shadow + length C=0.1": (lambda base: base + FSHADOW + LENGTH, 0.1),
-    "v6 + strong forum shadow + length": (lambda base: base + STRONG + LENGTH, 1.0),
-    "compact": (lambda base: ["lira_gain", "dom", "ref", "ref_minkpp", "minkpp20"] + FSHADOW + LENGTH, 1.0),
-}
-
-
-def explore_v3(out_dir: str) -> None:
-    """The V3 variants, then the global simulation of explore_v10 without and with the forum file of the first variant."""
-    from .attacks import explore_v10
-    explore(out_dir, V3, extra=(token_features, forum_shadow_features))
-    for name, files in [("global-v6", None), ("global-forum", {FORUM: f"{out_dir}/submission_forum_logodds.csv"})]:
-        explore_v10(f"{out_dir}/{name}", ("shadow",), single_files=files, single_C={"web photo": 0.01})
 
 
 # Variants of the job forum-v4 with the 8 splits of forum-shadow and forum-shadow-b. The suffix _4 marks the first 4 splits.
