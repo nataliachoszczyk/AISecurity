@@ -306,3 +306,9 @@ def feature_smoke(out_dir: str) -> None:
         table = fn(data).dropna(how="all")
         print(fn.__name__, len(table), "\n", table.describe().round(3).to_string(), flush=True)
         table.describe().round(3).to_csv(out / f"{fn.__name__}.csv")
+
+
+def explore_v2a(out_dir: str) -> None:
+    """The variants of forum-v2 without the forum shadow models (their job runs longer)."""
+    variants = {k: v for k, v in V2.items() if "forum shadow" not in k}
+    explore(out_dir, variants, extra=(token_features, recall_features))

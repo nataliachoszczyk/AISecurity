@@ -216,3 +216,5 @@ Ideas, ranked by the expected value and the cost:
 - Added the job `2026-11-27_60_forum-feature-smoke` (CPU). It checks `forum_shadow_features` and `recall_features` on the outputs of the two smoke jobs, before the long jobs end.
 - Job `forum-feature-smoke`, version 1 failed. `forum_shadow_features` is correct (20 records). `recall_features` failed when no post of the prefix was in the table. Changed the median fill to one column at a time. Version 2 runs the same check.
 - Job `forum-feature-smoke`, version 2 is complete. Both feature functions give values for the 20 smoke posts.
+- Job `recall` is complete in 75 minutes (1.2 seconds for each post and model).
+- Added the job `2026-11-27_61_forum-v2a` (CPU): v6, v6 + ReCaLL, v6 + length. The forum shadow variants follow when the job `forum-shadow` ends.
