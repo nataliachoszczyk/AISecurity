@@ -323,3 +323,5 @@ Ideas, ranked by the expected value and the cost:
 - Merged the branch `pro3-forum`. The forum module (`src/forum.py`) adds 8 cheap forum shadow models (offline LiRA) and length features: forum CV 0.871 (std 0.020, v6: 0.843).
 - Made the submission file `submissions/attacks-v11.csv` (not in git): the scores of attacks-v10b with the forum test records replaced by the log-odds of the job forum-final. Both scores use the known prior of the source type, so the merge needs no new calibration.
 - The expected metric from the calibrated test scores is 0.877 (attacks-v8a: 0.804, public 0.774). Added the row of attacks-v11 to `docs/RESULTS.md`. The test score is not available yet.
+- Removed the file `jobs/runs/2026-11-27_30_webphoto-v1/output/webphoto-v1/logodds_base.csv` from the history of the branches `pro3-experiments`, `pro3-forum` and `pro3-webphoto` (git filter-branch, force push). The file had test scores. The branches `main` and `pro3` did not have it.
+- Changed the test cell of attacks-v11 in `docs/RESULTS.md` to "pending".
