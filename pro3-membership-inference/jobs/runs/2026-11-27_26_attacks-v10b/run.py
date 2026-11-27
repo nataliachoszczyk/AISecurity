@@ -14,4 +14,4 @@ if __name__ == "__main__":
     print("commit", subprocess.run(["git", "-C", CLONE, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip())
     sys.path.insert(0, f"{CLONE}/{PROJECT}")
     from src.attacks import explore_v10
-    explore_v10(f"/kaggle/working/{CODENAME}", ("shadow", "shadow-b"), single_C={"web photo": 0.01})
+    explore_v10(f"/kaggle/working/{CODENAME}", ("shadow", "shadowb"), single_C={"web photo": 0.01})
