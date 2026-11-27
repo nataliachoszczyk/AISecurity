@@ -169,3 +169,30 @@ Limits of the check:
 - Job `attacks-v10`: on test, the mixture of the text set types is almost exact (r = 0.99 to 1.00, eps = 0). The global simulation on known gives 0.812 (std 0.015).
 - The expected metric from the calibrated test scores is 0.885. For attacks-v8a the same estimate is 0.804, and the public score is 0.774. Thus the estimate is approximately 0.03 too high.
 - Now the set types are almost exact. Forum posts and web photos use most of the false positive budget, so they are the next targets.
+
+## 2026-11-27 (branch `pro3-forum`)
+
+The branch `pro3-forum` comes from `pro3-experiments` (after `attacks-v10`). It holds the work on the forum posts. The Kaggle account is `nataliachoszczyk`, the job numbers are 54 to 69.
+
+Baseline: the v6 record score, CV TPR@5%FPR 0.843 (std 0.027), AUC 0.953. The best single feature is `lira_gain` (AUC 0.93).
+
+### Research summary
+
+- Carlini et al. 2022 (LiRA): the attack becomes stronger with more shadow models. Online LiRA uses IN and OUT models, offline LiRA only OUT models. A variance for each record (or token) from the shadow models is important.
+- Zarifzadeh et al. 2024 (RMIA): it compares the ratio target/reference of a record with the same ratio of population records. With one reference model it stays strong. In a logistic regression on the gain, the rank against the population adds little, because it is a monotone change of the same ratio.
+- Hayes et al. 2025 (strong MIA on LLMs): LiRA with many reference models works on LLMs, but the gain for one record stays limited.
+- Xie et al. 2024 (ReCaLL): the drop of the likelihood with a non-member prefix is larger for members. It is strong on WikiMIA, but weaker on MIMIR, where no distribution shift occurs.
+- Zhang et al. 2025 (Min-K%++): already in the features.
+
+Ideas, ranked by the expected value and the cost:
+
+1. More shadow models for forum posts (online and offline LiRA with a variance for each token). Each model trains on one random half of the forum posts and 5% of the other texts, and scores only the forum posts. Cost: approximately 2 GPU hours for 8 models.
+2. A calibration of the gain for the length and the difficulty of a post (for example the sum of the gain instead of the mean, and a z-score). Cost: CPU only.
+3. ReCaLL with a prefix of known non-member forum posts, as a feature with the OUT shadow models for calibration. Cost: approximately 1 GPU hour.
+4. An RMIA-style rank against population records. Cost: CPU only, small expected gain.
+
+### Jobs
+
+- Added `src/forum.py`, the one code file of the forum module. It uses `train` and `shadow_halves` of `src/refmodel.py` and changes no shared file.
+- Added the job `2026-11-27_54_qwen-copy` (CPU). It downloads Qwen3-0.6B-Base with the revision of job 05 into an output of the account `nataliachoszczyk`, because the GPU jobs of this account cannot read the kernels of `jeronimoo`.
+- Added the job `2026-11-27_55_forum-shadow-smoke` (GPU T4 x2): `run_forum_shadow` on 40 forum posts and 10 other texts, then a score of 20 forum posts.
