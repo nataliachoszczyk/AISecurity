@@ -92,13 +92,16 @@ def token_features(records: pd.DataFrame) -> pd.DataFrame:
 LENGTH = ["log_n", "g_sum", "g_t", "d_sum", "d_t", "out_lp", "g_hard", "g_easy"]
 
 
-def forum_shadow_features(records: pd.DataFrame, max_splits: int | None = None) -> pd.DataFrame:
+def forum_shadow_features(records: pd.DataFrame, max_splits: int | None = None, suffix: str = "") -> pd.DataFrame:
     """LiRA features of the forum shadow models: IN and OUT means and variances of each token.
 
     online: the log-likelihood ratio of two Gaussians (IN and OUT) for each token, with one variance of the record.
     offline: the z-score of the target against the OUT models only.
 
+    offline_tok: as offline, with a variance for each token (shrunk to the variance of the record).
+
     The splits can come from more than one job output. max_splits keeps only the first splits.
+    suffix goes after each column name, so that two split counts can be in one table.
     """
     from .attacks import find_passes, load_pass
     folders = {int(f.stem.split("_s")[1]): f.parent for f in Path("/kaggle/input").rglob("forum_halves_s*.csv")}
@@ -125,9 +128,11 @@ def forum_shadow_features(records: pd.DataFrame, max_splits: int | None = None) 
         rows.append({"f_gain": g.mean(), "f_gain_t": t_stat(g), "f_m": m.mean(),
                      "f_online": float((m * (2 * g - m)).mean() / (2 * var)),
                      "f_offline": float((g / np.sqrt(var_out)).mean()),
+                     "f_offline_tok": float((g / np.sqrt(lp_out.var(0, ddof=1) + var_out)).mean()),
                      "f_slope": float((g * m).sum() / max((m * m).sum(), 1e-6)),
                      "f_low20": float(np.sort(g)[:max(1, len(g) // 5)].mean())})
-    return pd.DataFrame(rows, index=ids).reindex(records["id"]).set_axis(records.index)
+    table = pd.DataFrame(rows, index=ids).add_suffix(suffix)
+    return table.reindex(records["id"]).set_axis(records.index)
 
 
 FSHADOW = ["f_gain", "f_gain_t", "f_m", "f_online", "f_offline", "f_slope", "f_low20"]
@@ -175,7 +180,7 @@ def explore(out_dir: str, variants: dict, extra=()) -> None:
     folds = {seed: baseline_folds(data, seed) for seed in range(5)}
     known = data[(data["source_type"] == FORUM) & (data["split"] == "known")].copy()
     known["member"] = known["member"].astype(int)
-    new = [c for c in data.columns if c in LENGTH + FSHADOW + RECALL]
+    new = [c for c in data.columns if c in LENGTH + RECALL or c.startswith("f_")]
     single = pd.DataFrame([{"feature": c, **metrics_row(known[c].to_numpy(), known["member"])}
                            for c in ["lira_gain"] + new]).round(3)
     rows = pd.concat([forum_cv(known, cols(v6_columns_of(FORUM)), folds, C).assign(variant=name)
@@ -343,3 +348,22 @@ def explore_v3(out_dir: str) -> None:
     explore(out_dir, V3, extra=(token_features, forum_shadow_features))
     for name, files in [("global-v6", None), ("global-forum", {FORUM: f"{out_dir}/submission_forum_logodds.csv"})]:
         explore_v10(f"{out_dir}/{name}", ("shadow",), single_files=files, single_C={"web photo": 0.01})
+
+
+# Variants of the job forum-v4 with the 8 splits of forum-shadow and forum-shadow-b. The suffix _4 marks the first 4 splits.
+V4 = {
+    "v6 + strong (8 splits) + length": (lambda base: base + STRONG + LENGTH, 1.0),
+    "v6 + strong (4 splits) + length": (lambda base: base + [c + "_4" for c in STRONG] + LENGTH, 1.0),
+    "v6 + strong + offline per token (8 splits) + length": (lambda base: base + STRONG + ["f_offline_tok"] + LENGTH, 1.0),
+    "v6 + all forum shadow (8 splits) + length": (lambda base: base + FSHADOW + ["f_offline_tok"] + LENGTH, 1.0),
+}
+
+
+def explore_v4(out_dir: str) -> None:
+    """The V4 variants, then the global simulation of explore_v10 with the forum file of the first variant."""
+    from functools import partial
+    from .attacks import explore_v10
+    four = partial(forum_shadow_features, max_splits=4, suffix="_4")
+    explore(out_dir, V4, extra=(token_features, forum_shadow_features, four))
+    explore_v10(f"{out_dir}/global-forum", ("shadow",), single_files={FORUM: f"{out_dir}/submission_forum_logodds.csv"},
+                single_C={"web photo": 0.01})
