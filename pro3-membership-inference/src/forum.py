@@ -92,22 +92,25 @@ def token_features(records: pd.DataFrame) -> pd.DataFrame:
 LENGTH = ["log_n", "g_sum", "g_t", "d_sum", "d_t", "out_lp", "g_hard", "g_easy"]
 
 
-def forum_shadow_features(records: pd.DataFrame) -> pd.DataFrame:
+def forum_shadow_features(records: pd.DataFrame, max_splits: int | None = None) -> pd.DataFrame:
     """LiRA features of the forum shadow models: IN and OUT means and variances of each token.
 
     online: the log-likelihood ratio of two Gaussians (IN and OUT) for each token, with one variance of the record.
     offline: the z-score of the target against the OUT models only.
+
+    The splits can come from more than one job output. max_splits keeps only the first splits.
     """
-    from .attacks import find_folder, find_passes, load_pass
-    folder = find_folder("fshadow_s0_h0_text.npz")
-    splits = sorted(int(f.stem.split("_s")[1]) for f in folder.glob("forum_halves_s*.csv"))
+    from .attacks import find_passes, load_pass
+    folders = {int(f.stem.split("_s")[1]): f.parent for f in Path("/kaggle/input").rglob("forum_halves_s*.csv")}
+    splits = sorted(folders)[:max_splits]
+    print("forum shadow splits", splits, flush=True)
     ids, models = None, {}
     for s in splits:
         for h in (0, 1):
-            m_ids, models[s, h] = load_pass(folder, f"fshadow_s{s}_h{h}_text")
+            m_ids, models[s, h] = load_pass(folders[s], f"fshadow_s{s}_h{h}_text")
             assert ids is None or ids.equals(m_ids)
             ids = m_ids
-    halves = {s: pd.read_csv(folder / f"forum_halves_s{s}.csv").set_index("id")["half"] for s in splits}
+    halves = {s: pd.read_csv(folders[s] / f"forum_halves_s{s}.csv").set_index("id")["half"] for s in splits}
     t_ids, target = load_pass(find_passes(), "bumas_text")
     target = dict(zip(t_ids, target))
     rows = []

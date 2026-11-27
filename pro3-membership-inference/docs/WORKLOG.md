@@ -226,3 +226,12 @@ Ideas, ranked by the expected value and the cost:
   - The gain of the length features is approximately one std of the paired difference. They stay a candidate.
 - Job `forum-shadow` is complete in 2 hours 35 minutes, no error. All 8 models scored the 3000 forum posts.
 - Added the job `2026-11-27_62_forum-v2` (CPU): all variants of `V2`, with the forum shadow features.
+- Job `forum-v2` is complete in 1 minute. TPR@5%FPR (mean, std; paired difference against v6, mean and std):
+  - v6: 0.843 (0.027).
+  - v6 + forum shadow: 0.858 (0.029); +0.015 (0.014).
+  - v6 + ReCaLL: 0.849 (0.023); +0.006 (0.012).
+  - v6 + length: 0.856 (0.024); +0.013 (0.011).
+  - v6 + forum shadow + length: 0.872 (0.019); +0.028 (0.014). This gain is two stds of the paired difference.
+  - Single features: the gain over the mean of the 4 OUT forum shadow models (`f_gain`) has TPR@5%FPR 0.833 and AUC 0.948. The gain over one OUT model of the full shadow pair (`lira_gain`) has 0.739 and 0.929. The offline z-score (`f_offline`) has 0.830 and 0.950. The online LiRA ratio is weaker (0.509, AUC 0.853).
+- More OUT models make the gain feature much stronger. Thus added the job `2026-11-27_63_forum-shadow-b` (GPU T4 x2) with 4 more splits (4 to 7). With both jobs, each forum post has 8 IN and 8 OUT models.
+- Changed `forum_shadow_features`: it reads the splits of all job outputs below `/kaggle/input`, and `max_splits` can limit them.
