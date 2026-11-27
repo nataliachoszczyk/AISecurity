@@ -200,3 +200,54 @@ V1 = {
 
 def explore_v1(out_dir: str) -> None:
     explore(out_dir, V1, extra=(token_features,))
+
+
+PREFIX_POSTS = 4  # known non-member forum posts in the ReCaLL prefix
+
+
+def prefix_ids(records: pd.DataFrame) -> list[str]:
+    """Ids of the known non-member forum posts of the ReCaLL prefix (a fixed random choice)."""
+    pool = records[(records["source_type"] == FORUM) & (records["split"] == "known") & (records["member"] == 0)]
+    return pool.sample(PREFIX_POSTS, random_state=0)["id"].tolist()
+
+
+def run_recall(model_name: str, device: str, out_dir: str, limit: int | None = None) -> None:
+    """ReCaLL (Xie et al. 2024): log p of each forum post after a prefix of known non-member forum posts.
+
+    model_name: 'bumas' (the LLM of BUMAS-mini) or 'qwen' (the reference model, for the calibration).
+    The tokens of the post have the same format as in src/logprobs.py, with the prefix and EOT before them.
+    """
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from .logprobs import import_openbumas, reference_path, save, token_stats
+    torch.cuda.set_device(device)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        root = find_root()
+        records = load_records(root)
+        forum = records[records["source_type"] == FORUM]
+        tok = AutoTokenizer.from_pretrained(root / "model" / "llm")
+        if model_name == "bumas":
+            llm = import_openbumas(root).BUMASMini.load(root / "model", dtype=torch.float32).llm.to(device).eval()
+        else:
+            llm = AutoModelForCausalLM.from_pretrained(reference_path(), dtype=torch.float32).to(device).eval()
+        chosen = prefix_ids(records)
+        pd.Series(chosen, name="id").to_csv(out / "recall_prefix.csv", index=False)
+        eot = tok.convert_tokens_to_ids("<|endoftext|>")
+        prefix = [eot]
+        for text in forum.set_index("id").loc[chosen, "content"]:
+            prefix += tok(text.strip() + "<|endoftext|>", add_special_tokens=False)["input_ids"]
+        score = forum.head(limit) if limit else forum
+        rows, t0 = [], time.time()
+        with torch.no_grad():
+            for i, text in enumerate(score["content"]):
+                post = tok(text.strip() + "<|endoftext|>", add_special_tokens=False)["input_ids"][:2048 - len(prefix)]
+                ids = torch.tensor(prefix + post, device=device)
+                logits = llm(input_ids=ids[None]).logits[0, len(prefix) - 1:-1]
+                rows.append(token_stats(logits, ids[len(prefix):]))
+                if i % 500 == 0:
+                    print(f"recall {model_name}: {i}/{len(score)} records, {time.time() - t0:.0f} s", flush=True)
+        save(out / f"recall_{model_name}_text.npz", score["id"], rows)
+    except Exception:
+        traceback.print_exc()
+        (out / f"error_{model_name}.txt").write_text(traceback.format_exc())

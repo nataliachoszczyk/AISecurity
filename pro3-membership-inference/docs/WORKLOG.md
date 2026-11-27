@@ -209,3 +209,5 @@ Ideas, ranked by the expected value and the cost:
   - Alone, the t statistic of the gain (`g_t`) has AUC 0.929, the same as `lira_gain`. The sum of the gain (`g_sum`) is weaker (AUC 0.902).
 - Added to `explore` the paired difference against the first variant (the same seeds and folds). It is more sensitive than two separate stds.
 - Added the job `2026-11-27_57_forum-shadow` (GPU T4 x2): 4 half splits of the forum posts, 8 models. Each forum post gets 4 IN and 4 OUT models.
+- Added ReCaLL to `src/forum.py` (`run_recall`). It computes log p of each forum post after a prefix of 4 known non-member forum posts. BUMAS-mini gives the score, and Qwen3-0.6B-Base gives the same value for the calibration.
+- Added the jobs `2026-11-27_58_recall-smoke` (20 posts) and `2026-11-27_59_recall` (all 3000 forum posts), GPU T4 x2.
