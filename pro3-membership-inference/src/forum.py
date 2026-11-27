@@ -171,7 +171,7 @@ def explore(out_dir: str, variants: dict, extra=()) -> None:
     folds = {seed: baseline_folds(data, seed) for seed in range(5)}
     known = data[(data["source_type"] == FORUM) & (data["split"] == "known")].copy()
     known["member"] = known["member"].astype(int)
-    new = [c for c in data.columns if c in LENGTH + FSHADOW]
+    new = [c for c in data.columns if c in LENGTH + FSHADOW + RECALL]
     single = pd.DataFrame([{"feature": c, **metrics_row(known[c].to_numpy(), known["member"])}
                            for c in ["lira_gain"] + new]).round(3)
     rows = pd.concat([forum_cv(known, cols(v6_columns_of(FORUM)), folds, C).assign(variant=name)
@@ -251,3 +251,43 @@ def run_recall(model_name: str, device: str, out_dir: str, limit: int | None = N
     except Exception:
         traceback.print_exc()
         (out / f"error_{model_name}.txt").write_text(traceback.format_exc())
+
+
+def recall_features(records: pd.DataFrame) -> pd.DataFrame:
+    """ReCaLL features: the change of the mean log p of a post after the non-member prefix, for BUMAS-mini and Qwen.
+
+    The posts of the prefix get the median value, because the prefix contains them.
+    """
+    from .attacks import find_folder, find_passes, load_pass
+    folder = find_folder("recall_bumas_text.npz")
+    out = {}
+    for key, cond_name, plain_name in [("t", "recall_bumas_text", "bumas_text"), ("q", "recall_qwen_text", "qwen_text")]:
+        ids, cond = load_pass(folder, cond_name)
+        p_ids, plain = load_pass(find_passes(), plain_name)
+        plain = dict(zip(p_ids, plain))
+        c = np.array([r["lp"].mean() for r in cond])
+        u = np.array([plain[rid]["lp"][:len(r["lp"])].mean() for rid, r in zip(ids, cond)])
+        out[f"recall_{key}"] = pd.Series(c - u, index=ids)
+        out[f"recall_ratio_{key}"] = pd.Series(c / u, index=ids)
+    table = pd.DataFrame(out)
+    table["recall_diff"] = table["recall_t"] - table["recall_q"]
+    prefix = pd.read_csv(folder / "recall_prefix.csv")["id"]
+    table.loc[table.index.isin(prefix)] = table.median()
+    return table.reindex(records["id"]).set_axis(records.index)
+
+
+RECALL = ["recall_t", "recall_ratio_t", "recall_q", "recall_ratio_q", "recall_diff"]
+
+
+# Variants of the job forum-v2: one change each against v6 (C 1).
+V2 = {
+    "v6": (lambda base: base, 1.0),
+    "v6 + forum shadow": (lambda base: base + FSHADOW, 1.0),
+    "v6 + recall": (lambda base: base + RECALL, 1.0),
+    "v6 + length": (lambda base: base + LENGTH, 1.0),
+    "v6 + forum shadow + length": (lambda base: base + FSHADOW + LENGTH, 1.0),
+}
+
+
+def explore_v2(out_dir: str) -> None:
+    explore(out_dir, V2, extra=(token_features, forum_shadow_features, recall_features))

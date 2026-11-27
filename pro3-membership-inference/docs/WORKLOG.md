@@ -211,3 +211,5 @@ Ideas, ranked by the expected value and the cost:
 - Added the job `2026-11-27_57_forum-shadow` (GPU T4 x2): 4 half splits of the forum posts, 8 models. Each forum post gets 4 IN and 4 OUT models.
 - Added ReCaLL to `src/forum.py` (`run_recall`). It computes log p of each forum post after a prefix of 4 known non-member forum posts. BUMAS-mini gives the score, and Qwen3-0.6B-Base gives the same value for the calibration.
 - Added the jobs `2026-11-27_58_recall-smoke` (20 posts) and `2026-11-27_59_recall` (all 3000 forum posts), GPU T4 x2.
+- Job `recall-smoke` is complete in 10 minutes, without an error. Started the job `recall` in the second GPU session.
+- Added `recall_features` and the variants of the job `forum-v2` to `src/forum.py`.
