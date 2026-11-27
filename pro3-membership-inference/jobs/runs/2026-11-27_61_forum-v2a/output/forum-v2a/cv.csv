@@ -1,0 +1,4 @@
+variant,TPR@5%FPR mean,TPR@5%FPR std,AUC mean,AUC std,paired diff mean,paired diff std
+v6,0.843,0.027,0.953,0.012,0.0,0.0
+v6 + recall,0.849,0.023,0.955,0.011,0.006,0.012
+v6 + length,0.856,0.024,0.957,0.011,0.013,0.011

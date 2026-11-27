@@ -1,0 +1,15 @@
+feature,TPR@5%FPR,AUC
+lira_gain,0.739,0.929
+log_n,0.055,0.511
+g_sum,0.667,0.902
+g_t,0.733,0.929
+d_sum,0.336,0.752
+d_t,0.494,0.83
+out_lp,0.036,0.479
+g_hard,0.679,0.902
+g_easy,0.594,0.874
+recall_t,0.012,0.459
+recall_ratio_t,0.033,0.522
+recall_q,0.045,0.508
+recall_ratio_q,0.036,0.491
+recall_diff,0.03,0.472

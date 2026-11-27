@@ -218,3 +218,9 @@ Ideas, ranked by the expected value and the cost:
 - Job `forum-feature-smoke`, version 2 is complete. Both feature functions give values for the 20 smoke posts.
 - Job `recall` is complete in 75 minutes (1.2 seconds for each post and model).
 - Added the job `2026-11-27_61_forum-v2a` (CPU): v6, v6 + ReCaLL, v6 + length. The forum shadow variants follow when the job `forum-shadow` ends.
+- Job `forum-v2a` is complete in 1 minute. TPR@5%FPR (mean, std; paired difference against v6, mean and std):
+  - v6: 0.843 (0.027).
+  - v6 + ReCaLL: 0.849 (0.023); +0.006 (0.012).
+  - v6 + length: 0.856 (0.024); +0.013 (0.011).
+  - The ReCaLL features have no signal alone (AUC 0.46 to 0.52). The members and the non-members come from the same distribution, as in MIMIR. Thus ReCaLL is removed.
+  - The gain of the length features is approximately one std of the paired difference. They stay a candidate.
