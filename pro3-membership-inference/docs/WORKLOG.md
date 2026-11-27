@@ -315,3 +315,8 @@ Ideas, ranked by the expected value and the cost:
 - Decision: 8 splits give no gain over 4. Thus the final model uses only the 4 splits of the job `forum-shadow` (one kernel output less).
 - Froze `src/forum.py`. The main function is `forum_module(out_dir, shadow_names)`. Removed `explore`, the V4 variants and the unused forum shadow features.
 - Added the job `2026-11-27_66_forum-final` (CPU): `forum_module` and the global simulation of `explore_v10` with its file.
+- Job `forum-final` is complete in 2 minutes. Final forum module (v6, the three strong forum shadow features of 4 splits, the length features, C 1):
+  - Forum CV (baseline folds): TPR@5%FPR 0.871 (std 0.020), AUC 0.962 (0.010). The v6 baseline with the same shadow pair has 0.843 (0.027), AUC 0.953.
+  - Global simulation of `explore_v10` (shadow pair `shadow`, web photo C 0.01) with the forum file: all 0.819 (0.015), test-like 0.869 (0.009). Forum TPR at the global threshold 0.832 (0.046), forum false positives 13.9 (4.8). Without the file: 0.808, 0.866 and 0.785.
+  - Expected forum members in test: 182.1.
+- The output `submission_forum_logodds.csv` of the kernel `nataliachoszczyk/bumas-p3-forum-final` has `id,logodds` for all 3000 forum posts (1730 known out of fold, 1270 test). Git ignores it.
