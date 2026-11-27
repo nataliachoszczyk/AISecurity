@@ -1,0 +1,109 @@
+feature,AUC,TPR,source_type
+rank_img_gain,0.517,0.063,web photo
+rank_img_z,0.541,0.082,web photo
+rank_img_pct,0.537,0.0,web photo
+rank_cap_z,0.532,0.051,web photo
+rank_cap_pct,0.511,0.0,web photo
+flip_drop,0.493,0.063,web photo
+renyi_img_0.5,0.547,0.043,web photo
+renyi_img_0.5_max,0.533,0.043,web photo
+renyi_img_1.0,0.558,0.059,web photo
+renyi_img_1.0_max,0.531,0.031,web photo
+renyi_img_2.0,0.552,0.055,web photo
+renyi_img_2.0_max,0.525,0.051,web photo
+renyi_img_inf,0.548,0.055,web photo
+renyi_img_inf_max,0.519,0.063,web photo
+renyi_cap_0.5,0.532,0.055,web photo
+renyi_cap_0.5_max,0.512,0.075,web photo
+renyi_cap_1.0,0.54,0.043,web photo
+renyi_cap_1.0_max,0.514,0.059,web photo
+renyi_cap_2.0,0.543,0.067,web photo
+renyi_cap_2.0_max,0.519,0.071,web photo
+renyi_cap_inf,0.543,0.071,web photo
+renyi_cap_inf_max,0.52,0.067,web photo
+log_grad_loss,0.426,0.031,web photo
+log_grad_img,0.459,0.051,web photo
+log_grad_connector,0.439,0.047,web photo
+log_grad_embed,0.407,0.047,web photo
+log_grad_layer0,0.415,0.02,web photo
+log_grad_layer1,0.409,0.035,web photo
+log_grad_layer2,0.408,0.039,web photo
+log_grad_layer3,0.411,0.035,web photo
+log_grad_layer4,0.41,0.039,web photo
+log_grad_layer5,0.416,0.031,web photo
+log_grad_layer6,0.419,0.031,web photo
+log_grad_layer7,0.421,0.031,web photo
+log_grad_layer8,0.427,0.012,web photo
+log_grad_layer9,0.428,0.02,web photo
+log_grad_layer10,0.418,0.024,web photo
+log_grad_layer11,0.41,0.016,web photo
+log_grad_layer12,0.422,0.02,web photo
+log_grad_layer13,0.411,0.016,web photo
+log_grad_layer14,0.405,0.008,web photo
+log_grad_layer15,0.414,0.024,web photo
+log_grad_layer16,0.41,0.035,web photo
+log_grad_layer17,0.408,0.027,web photo
+log_grad_layer18,0.406,0.02,web photo
+log_grad_layer19,0.417,0.024,web photo
+log_grad_layer20,0.405,0.035,web photo
+log_grad_layer21,0.425,0.031,web photo
+log_grad_layer22,0.43,0.024,web photo
+log_grad_layer23,0.444,0.051,web photo
+log_grad_layer24,0.432,0.031,web photo
+log_grad_layer25,0.445,0.035,web photo
+log_grad_layer26,0.44,0.027,web photo
+log_grad_layer27,0.462,0.055,web photo
+rank_img_gain,0.579,0.097,photographer
+rank_img_z,0.565,0.042,photographer
+rank_img_pct,0.548,0.0,photographer
+rank_cap_z,0.57,0.069,photographer
+rank_cap_pct,0.549,0.0,photographer
+flip_drop,0.555,0.111,photographer
+renyi_img_0.5,0.494,0.097,photographer
+renyi_img_0.5_max,0.465,0.042,photographer
+renyi_img_1.0,0.521,0.069,photographer
+renyi_img_1.0_max,0.468,0.042,photographer
+renyi_img_2.0,0.528,0.056,photographer
+renyi_img_2.0_max,0.517,0.042,photographer
+renyi_img_inf,0.532,0.042,photographer
+renyi_img_inf_max,0.506,0.083,photographer
+renyi_cap_0.5,0.518,0.056,photographer
+renyi_cap_0.5_max,0.483,0.069,photographer
+renyi_cap_1.0,0.523,0.056,photographer
+renyi_cap_1.0_max,0.531,0.056,photographer
+renyi_cap_2.0,0.522,0.042,photographer
+renyi_cap_2.0_max,0.504,0.014,photographer
+renyi_cap_inf,0.517,0.056,photographer
+renyi_cap_inf_max,0.513,0.028,photographer
+log_grad_loss,0.259,0.0,photographer
+log_grad_img,0.458,0.014,photographer
+log_grad_connector,0.43,0.014,photographer
+log_grad_embed,0.333,0.014,photographer
+log_grad_layer0,0.26,0.0,photographer
+log_grad_layer1,0.258,0.0,photographer
+log_grad_layer2,0.251,0.0,photographer
+log_grad_layer3,0.271,0.0,photographer
+log_grad_layer4,0.271,0.0,photographer
+log_grad_layer5,0.294,0.0,photographer
+log_grad_layer6,0.315,0.0,photographer
+log_grad_layer7,0.323,0.0,photographer
+log_grad_layer8,0.347,0.0,photographer
+log_grad_layer9,0.347,0.0,photographer
+log_grad_layer10,0.35,0.0,photographer
+log_grad_layer11,0.335,0.014,photographer
+log_grad_layer12,0.361,0.0,photographer
+log_grad_layer13,0.35,0.0,photographer
+log_grad_layer14,0.342,0.0,photographer
+log_grad_layer15,0.356,0.0,photographer
+log_grad_layer16,0.332,0.014,photographer
+log_grad_layer17,0.364,0.014,photographer
+log_grad_layer18,0.338,0.042,photographer
+log_grad_layer19,0.287,0.042,photographer
+log_grad_layer20,0.273,0.014,photographer
+log_grad_layer21,0.291,0.014,photographer
+log_grad_layer22,0.301,0.0,photographer
+log_grad_layer23,0.26,0.028,photographer
+log_grad_layer24,0.301,0.014,photographer
+log_grad_layer25,0.282,0.0,photographer
+log_grad_layer26,0.329,0.0,photographer
+log_grad_layer27,0.372,0.014,photographer

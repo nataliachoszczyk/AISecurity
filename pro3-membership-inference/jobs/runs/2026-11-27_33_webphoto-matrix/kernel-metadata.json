@@ -1,0 +1,14 @@
+{
+  "id": "jankombajn/bumas-p3-webphoto-matrix",
+  "title": "bumas-p3-webphoto-matrix",
+  "code_file": "run.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": ["jeronimoo/bumas-p3-data-set"],
+  "competition_sources": [],
+  "kernel_sources": []
+}

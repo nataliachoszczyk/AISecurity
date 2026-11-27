@@ -816,10 +816,11 @@ def explore_v9(out_dir: str, shadow_names=("shadow",), weights=(0.0, 0.5, 1.0)) 
         pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / f"submission_v9_w{w}.csv", index=False)
 
 
-def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | None = None) -> None:
+def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | None = None, single_C: dict | None = None) -> None:
     """The merged score: the owner mixture (src/photographer.py) for all set types, the record score for the single types.
 
     single_files can replace the log-odds of a single type with a file (columns id, logodds) of a module.
+    single_C gives a different C of the regression to a single type (job webphoto-v3: C = 0.01 for web photos).
     The global simulation on known uses the expected test members of the merged score as the weights.
     """
     from .data import find_root, load_records
@@ -833,7 +834,14 @@ def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | Non
     data["group"] = owner_groups(data)
     known_index = data.index[data["split"] == "known"]
     test = data["split"] == "test"
-    score = record_logodds(data, known_index, v6_columns_of)
+    def singles_logodds(fit_index):
+        out = record_logodds(data, fit_index, v6_columns_of)
+        for source_type, C in (single_C or {}).items():
+            sel = data["source_type"] == source_type
+            out[sel] = record_logodds(data[sel], fit_index.intersection(data.index[sel]), v6_columns_of, C)
+        return out
+
+    score = singles_logodds(known_index)
     for source_type in SET_TYPES:
         part = set_logodds(data, source_type).set_index("id")["logodds"]
         sel = data["source_type"] == source_type
@@ -847,12 +855,15 @@ def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | Non
     print(expected.round(1).to_string(), flush=True)
     known = data.loc[known_index].assign(member=lambda d: d["member"].astype(int))
     sample_w = pd.Series(test_like_weights(known, expected, data.loc[test, "source_type"].value_counts()), index=known_index)
+    # In test, a victim has only members (job attacks-v10). Thus the test-like check drops the known non-members of victims.
+    like = known[~((known["group"] == "victim") & (known["member"] == 0))]
+    like_w = pd.Series(test_like_weights(like, expected, data.loc[test, "source_type"].value_counts()), index=like.index)
     rows = []
     for seed in range(5):
         fold = make_folds(known, 2, seed)
         for f in range(2):
             fit_index, ev = known_index[fold != f], known_index[fold == f]
-            sim = record_logodds(data, fit_index, v6_columns_of)
+            sim = singles_logodds(fit_index)
             for source_type in SET_TYPES:
                 mixed = known_mixture(data, fit_index, ev, source_type)
                 sim[mixed.index] = mixed
@@ -863,6 +874,9 @@ def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | Non
             s, y, w = sim[ev].to_numpy(), known.loc[ev, "member"].to_numpy(), sample_w[ev].to_numpy()
             tpr, threshold = weighted_tpr_at_5fpr(s, y, w)
             row = {"seed": seed, "fold": f, "all": tpr}
+            keep = like_w.index.intersection(ev)
+            row["all, test-like"] = weighted_tpr_at_5fpr(sim[keep].to_numpy(), known.loc[keep, "member"].to_numpy(),
+                                                         like_w[keep].to_numpy())[0]
             types = known.loc[ev, "source_type"].to_numpy()
             for t in np.unique(types):
                 sel = types == t
