@@ -174,8 +174,14 @@ def explore(out_dir: str, variants: dict, extra=()) -> None:
     new = [c for c in data.columns if c in LENGTH + FSHADOW]
     single = pd.DataFrame([{"feature": c, **metrics_row(known[c].to_numpy(), known["member"])}
                            for c in ["lira_gain"] + new]).round(3)
-    cv = pd.concat([summary(forum_cv(known, cols(v6_columns_of(FORUM)), folds, C).assign(variant=name))
-                    for name, (cols, C) in variants.items()])
+    rows = pd.concat([forum_cv(known, cols(v6_columns_of(FORUM)), folds, C).assign(variant=name)
+                      for name, (cols, C) in variants.items()])
+    cv = summary(rows)
+    # The paired difference against the first variant on the same folds is more sensitive than two separate stds.
+    first = rows[rows["variant"] == next(iter(variants))].set_index(["seed", "fold"])["TPR@5%FPR"]
+    diff = rows.set_index(["seed", "fold"]).groupby("variant", sort=False)["TPR@5%FPR"].apply(lambda v: v - first)
+    cv["paired diff mean"] = diff.groupby("variant", sort=False).mean().round(3).to_numpy()
+    cv["paired diff std"] = diff.groupby("variant", sort=False).std().round(3).to_numpy()
     for file, table in [("single", single), ("cv", cv)]:
         table.to_csv(out / f"{file}.csv", index=False)
         print(file, "\n", table.to_string(), flush=True)

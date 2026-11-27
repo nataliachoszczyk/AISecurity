@@ -202,3 +202,10 @@ Ideas, ranked by the expected value and the cost:
   - the mean gain on hard and on easy tokens.
 - Added the forum CV with the baseline folds (`forum_cv`) and the log-odds file of the forum posts (`forum_logodds`).
 - Added the job `2026-11-27_56_forum-v1` (CPU): v6, v6 with C 0.1, v6 with the length features, both changes together.
+- Job `qwen-copy` is complete in 2 minutes.
+- Job `forum-shadow-smoke` is complete in 6 minutes, without an error. To load the weights takes approximately 3 minutes. Two optimizer steps take 47 seconds.
+- Job `forum-v1` is complete in 1 minute. TPR@5%FPR (mean, std): v6 0.843 (0.027), v6 C 0.1 0.843 (0.027), v6 + length 0.856 (0.024), v6 + length C 0.1 0.858 (0.029).
+  - The gain of the length features is smaller than the std. Thus no decision yet.
+  - Alone, the t statistic of the gain (`g_t`) has AUC 0.929, the same as `lira_gain`. The sum of the gain (`g_sum`) is weaker (AUC 0.902).
+- Added to `explore` the paired difference against the first variant (the same seeds and folds). It is more sensitive than two separate stds.
+- Added the job `2026-11-27_57_forum-shadow` (GPU T4 x2): 4 half splits of the forum posts, 8 models. Each forum post gets 4 IN and 4 OUT models.
