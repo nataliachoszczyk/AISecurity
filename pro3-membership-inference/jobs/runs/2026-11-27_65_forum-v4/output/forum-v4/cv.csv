@@ -1,0 +1,5 @@
+variant,TPR@5%FPR mean,TPR@5%FPR std,AUC mean,AUC std,paired diff mean,paired diff std
+v6 + strong (8 splits) + length,0.874,0.022,0.962,0.01,0.0,0.0
+v6 + strong (4 splits) + length,0.871,0.02,0.962,0.01,-0.003,0.009
+v6 + strong + offline per token (8 splits) + length,0.874,0.022,0.962,0.01,0.0,0.003
+v6 + all forum shadow (8 splits) + length,0.875,0.021,0.962,0.01,0.001,0.006

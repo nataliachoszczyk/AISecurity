@@ -305,3 +305,13 @@ Ideas, ranked by the expected value and the cost:
 - Added `forum_module(out_dir, shadow_names)` to `src/forum.py`: the final forum model (v6, the three strong forum shadow features, the length features), its CV and the file `id,logodds`.
 - Removed the dead code from `src/forum.py`: ReCaLL, the feature smoke check and the variants of the jobs `forum-v1` to `forum-v3`. These jobs ran the commits before this change.
 - Job `forum-shadow-b` is complete in 2 hours 30 minutes, no error. Started the job `forum-v4`.
+- Job `forum-v4` is complete in 2 minutes. TPR@5%FPR (mean, std; paired difference against the first variant):
+  - v6 + strong forum shadow (8 splits) + length: 0.874 (0.022).
+  - The same with 4 splits: 0.871 (0.020); -0.003 (0.009).
+  - With the offline z-score of each token: 0.874 (0.022); 0.000 (0.003).
+  - With all forum shadow features: 0.875 (0.021); +0.001 (0.006).
+  - Single features: `f_gain` 0.827 with 8 splits, 0.833 with 4 splits. Thus 4 OUT models already give a precise mean.
+  - Global simulation with the forum file (8 splits): all 0.818 (0.014), test-like 0.870 (0.009), forum TPR at the global threshold 0.832 (0.044).
+- Decision: 8 splits give no gain over 4. Thus the final model uses only the 4 splits of the job `forum-shadow` (one kernel output less).
+- Froze `src/forum.py`. The main function is `forum_module(out_dir, shadow_names)`. Removed `explore`, the V4 variants and the unused forum shadow features.
+- Added the job `2026-11-27_66_forum-final` (CPU): `forum_module` and the global simulation of `explore_v10` with its file.

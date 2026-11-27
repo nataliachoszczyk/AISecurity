@@ -1,4 +1,7 @@
-"""Forum post module: forum shadow models (LiRA with several IN and OUT models) and the calibrated log-odds of forum posts.
+"""Forum post module: forum shadow models (offline LiRA) and the calibrated log-odds of the forum posts.
+
+The model is one logistic regression on the v6 features, three forum shadow features and the length features.
+Main function: forum_module.
 
 The shadow models of src/refmodel.py are expensive (all records, 2.75 hours for a pair). A forum shadow model trains only
 on one random half of the forum posts and a small sample of the other texts. It scores only the forum posts.
@@ -92,20 +95,15 @@ def token_features(records: pd.DataFrame) -> pd.DataFrame:
 LENGTH = ["log_n", "g_sum", "g_t", "d_sum", "d_t", "out_lp", "g_hard", "g_easy"]
 
 
-def forum_shadow_features(records: pd.DataFrame, max_splits: int | None = None, suffix: str = "") -> pd.DataFrame:
-    """LiRA features of the forum shadow models: IN and OUT means and variances of each token.
+def forum_shadow_features(records: pd.DataFrame) -> pd.DataFrame:
+    """Offline LiRA features of the forum posts: the gain of the target over the mean of the OUT forum shadow models.
 
-    online: the log-likelihood ratio of two Gaussians (IN and OUT) for each token, with one variance of the record.
-    offline: the z-score of the target against the OUT models only.
-
-    offline_tok: as offline, with a variance for each token (shrunk to the variance of the record).
-
-    The splits can come from more than one job output. max_splits keeps only the first splits.
-    suffix goes after each column name, so that two split counts can be in one table.
+    f_gain is the mean gain over the tokens, f_gain_t its t statistic, f_offline the mean z-score with the variance of
+    the OUT models. The splits come from all job outputs below /kaggle/input (job forum-v4: 8 splits give no gain over 4).
     """
     from .attacks import find_passes, load_pass
     folders = {int(f.stem.split("_s")[1]): f.parent for f in Path("/kaggle/input").rglob("forum_halves_s*.csv")}
-    splits = sorted(folders)[:max_splits]
+    splits = sorted(folders)
     print("forum shadow splits", splits, flush=True)
     ids, models = None, {}
     for s in splits:
@@ -118,24 +116,11 @@ def forum_shadow_features(records: pd.DataFrame, max_splits: int | None = None, 
     target = dict(zip(t_ids, target))
     rows = []
     for i, rid in enumerate(ids):
-        t = target[rid]["lp"]
-        lp_in = np.array([models[s, halves[s][rid]][i]["lp"] for s in splits])
         lp_out = np.array([models[s, 1 - halves[s][rid]][i]["lp"] for s in splits])
-        mu_in, mu_out = lp_in.mean(0), lp_out.mean(0)
+        g = target[rid]["lp"] - lp_out.mean(0)
         var_out = lp_out.var(0, ddof=1).mean() + 1e-3
-        var = np.concatenate([lp_in.var(0, ddof=1), lp_out.var(0, ddof=1)]).mean() + 1e-3
-        g, m = t - mu_out, mu_in - mu_out
-        rows.append({"f_gain": g.mean(), "f_gain_t": t_stat(g), "f_m": m.mean(),
-                     "f_online": float((m * (2 * g - m)).mean() / (2 * var)),
-                     "f_offline": float((g / np.sqrt(var_out)).mean()),
-                     "f_offline_tok": float((g / np.sqrt(lp_out.var(0, ddof=1) + var_out)).mean()),
-                     "f_slope": float((g * m).sum() / max((m * m).sum(), 1e-6)),
-                     "f_low20": float(np.sort(g)[:max(1, len(g) // 5)].mean())})
-    table = pd.DataFrame(rows, index=ids).add_suffix(suffix)
-    return table.reindex(records["id"]).set_axis(records.index)
-
-
-FSHADOW = ["f_gain", "f_gain_t", "f_m", "f_online", "f_offline", "f_slope", "f_low20"]
+        rows.append({"f_gain": g.mean(), "f_gain_t": t_stat(g), "f_offline": float((g / np.sqrt(var_out)).mean())})
+    return pd.DataFrame(rows, index=ids).reindex(records["id"]).set_axis(records.index)
 
 
 def forum_cv(known: pd.DataFrame, cols, folds: dict, C: float = 1.0) -> pd.DataFrame:
@@ -165,39 +150,6 @@ def forum_logodds(data: pd.DataFrame, cols, C: float = 1.0) -> pd.DataFrame:
     return pd.DataFrame({"id": part["id"], "logodds": pd.concat([lo_known, lo_test]).loc[part.index]})
 
 
-def explore(out_dir: str, variants: dict, extra=()) -> None:
-    """Forum record variants: single features, CV with the baseline folds, and the log-odds file of the first variant.
-
-    variants maps a name to (columns, C). extra lists the feature functions to add (token_features, forum_shadow_features).
-    """
-    from .attacks import v6_columns_of
-    from .photographer import baseline_folds, load_data, metrics_row, summary
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    pd.set_option("display.width", 250)
-    data = load_data()
-    data = pd.concat([data] + [fn(data) for fn in extra], axis=1)
-    folds = {seed: baseline_folds(data, seed) for seed in range(5)}
-    known = data[(data["source_type"] == FORUM) & (data["split"] == "known")].copy()
-    known["member"] = known["member"].astype(int)
-    new = [c for c in data.columns if c in LENGTH or c.startswith("f_")]
-    single = pd.DataFrame([{"feature": c, **metrics_row(known[c].to_numpy(), known["member"])}
-                           for c in ["lira_gain"] + new]).round(3)
-    rows = pd.concat([forum_cv(known, cols(v6_columns_of(FORUM)), folds, C).assign(variant=name)
-                      for name, (cols, C) in variants.items()])
-    cv = summary(rows)
-    # The paired difference against the first variant on the same folds is more sensitive than two separate stds.
-    first = rows[rows["variant"] == next(iter(variants))].set_index(["seed", "fold"])["TPR@5%FPR"]
-    diff = rows.set_index(["seed", "fold"]).groupby("variant", sort=False)["TPR@5%FPR"].apply(lambda v: v - first)
-    cv["paired diff mean"] = diff.groupby("variant", sort=False).mean().round(3).to_numpy()
-    cv["paired diff std"] = diff.groupby("variant", sort=False).std().round(3).to_numpy()
-    for file, table in [("single", single), ("cv", cv)]:
-        table.to_csv(out / f"{file}.csv", index=False)
-        print(file, "\n", table.to_string(), flush=True)
-    name, (cols, C) = next(iter(variants.items()))
-    forum_logodds(data, cols(v6_columns_of(FORUM)), C).to_csv(out / "submission_forum_logodds.csv", index=False)
-
-
 def load_forum_data(shadow_names=("shadow",), extra=()) -> pd.DataFrame:
     """All records with the features of attacks.py (v6 with the given shadow pairs) and the extra feature functions."""
     from .attacks import all_features, find_passes, owner_groups, v6_features
@@ -208,27 +160,7 @@ def load_forum_data(shadow_names=("shadow",), extra=()) -> pd.DataFrame:
     return pd.concat([data] + [fn(data) for fn in extra], axis=1)
 
 
-# The three strong forum shadow features (job forum-v3: the other forum shadow features give no gain).
-STRONG = ["f_gain", "f_gain_t", "f_offline"]
-
-
-# Variants of the job forum-v4 with the 8 splits of forum-shadow and forum-shadow-b. The suffix _4 marks the first 4 splits.
-V4 = {
-    "v6 + strong (8 splits) + length": (lambda base: base + STRONG + LENGTH, 1.0),
-    "v6 + strong (4 splits) + length": (lambda base: base + [c + "_4" for c in STRONG] + LENGTH, 1.0),
-    "v6 + strong + offline per token (8 splits) + length": (lambda base: base + STRONG + ["f_offline_tok"] + LENGTH, 1.0),
-    "v6 + all forum shadow (8 splits) + length": (lambda base: base + FSHADOW + ["f_offline_tok"] + LENGTH, 1.0),
-}
-
-
-def explore_v4(out_dir: str) -> None:
-    """The V4 variants, then the global simulation of explore_v10 with the forum file of the first variant."""
-    from functools import partial
-    from .attacks import explore_v10
-    four = partial(forum_shadow_features, max_splits=4, suffix="_4")
-    explore(out_dir, V4, extra=(token_features, forum_shadow_features, four))
-    explore_v10(f"{out_dir}/global-forum", ("shadow",), single_files={FORUM: f"{out_dir}/submission_forum_logodds.csv"},
-                single_C={"web photo": 0.01})
+STRONG = ["f_gain", "f_gain_t", "f_offline"]  # job forum-v3: the other forum shadow features give no gain
 
 
 FINAL_EXTRA = (token_features, forum_shadow_features)
@@ -242,8 +174,8 @@ def final_columns(base: list[str]) -> list[str]:
 def forum_module(out_dir: str, shadow_names=("shadow",)) -> pd.DataFrame:
     """The final forum module: calibrated log-odds of all forum posts (id, split, logodds) and its CV.
 
-    It needs the passes of attacks.py, the shadow pairs of shadow_names and the outputs of the jobs forum-shadow and
-    forum-shadow-b (account nataliachoszczyk). Known: out of fold (folds of seed 0). Test: fit on all known.
+    It needs the passes of attacks.py, the shadow pairs of shadow_names and the output of the job forum-shadow
+    (account nataliachoszczyk). Known: out of fold (folds of seed 0). Test: fit on all known.
     """
     from .attacks import v6_columns_of
     from .photographer import baseline_folds, summary
