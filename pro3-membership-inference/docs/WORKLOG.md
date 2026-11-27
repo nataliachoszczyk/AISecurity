@@ -158,3 +158,9 @@ Limits of the check:
   - The honest check compares four variants: record, group prior, mixture, prior shift w 1.
   - The global simulation also runs with the expected test members of the mixture for all set types, not only with the members of attacks-v8a.
 - Added the job `2026-11-27_53_photographer-v4` (CPU). It writes `submission_photographer_logodds.csv` (`id,logodds`, all 1440 photographer records) to the output.
+- Job `photographer-v4` is complete in 2 minutes. Final results of the photographer module (v6 with C 0.1, owner mixture):
+  - Known CV (validation of `src/validation.py`, baseline folds): record 0.531 (std 0.062), AUC 0.902. With the prior of the owner group: 0.639 (0.037), AUC 0.952. The baseline attacks-v8a has 0.503 (0.066), AUC 0.894.
+  - Honest check, base scenario: mixture 1.000 (0.000), prior shift w 1 0.867 (0.026), record 0.722 (0.018).
+  - Global simulation with the weights of attacks-v8a: 0.767 (0.014) against 0.756 (0.019). With the expected members of the mixture for all set types: 0.807 (0.015) against 0.753 (0.020).
+  - Test: 277.3 expected photographer members, 292 records with a log-odds above 0. The structure of the text types gives 280.
+- The output `submission_photographer_logodds.csv` of the kernel `nataliachoszczyk/bumas-p3-photographer-v4` has `id,logodds` for all 1440 photographer records (600 known out of fold, 840 test). Git ignores it, because the repository is public.
