@@ -273,7 +273,9 @@ def recall_features(records: pd.DataFrame) -> pd.DataFrame:
     table = pd.DataFrame(out)
     table["recall_diff"] = table["recall_t"] - table["recall_q"]
     prefix = pd.read_csv(folder / "recall_prefix.csv")["id"]
-    table.loc[table.index.isin(prefix)] = table.median()
+    is_prefix = table.index.isin(prefix)
+    for col in table.columns:
+        table.loc[is_prefix, col] = table.loc[~is_prefix, col].median()
     return table.reindex(records["id"]).set_axis(records.index)
 
 

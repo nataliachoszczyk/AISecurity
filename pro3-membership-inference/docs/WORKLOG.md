@@ -214,3 +214,4 @@ Ideas, ranked by the expected value and the cost:
 - Job `recall-smoke` is complete in 10 minutes, without an error. Started the job `recall` in the second GPU session.
 - Added `recall_features` and the variants of the job `forum-v2` to `src/forum.py`.
 - Added the job `2026-11-27_60_forum-feature-smoke` (CPU). It checks `forum_shadow_features` and `recall_features` on the outputs of the two smoke jobs, before the long jobs end.
+- Job `forum-feature-smoke`, version 1 failed. `forum_shadow_features` is correct (20 records). `recall_features` failed when no post of the prefix was in the table. Changed the median fill to one column at a time. Version 2 runs the same check.
