@@ -92,7 +92,7 @@ def token_features(records: pd.DataFrame) -> pd.DataFrame:
 LENGTH = ["log_n", "g_sum", "g_t", "d_sum", "d_t", "out_lp", "g_hard", "g_easy"]
 
 
-def forum_shadow_features(records: pd.DataFrame, splits=range(4)) -> pd.DataFrame:
+def forum_shadow_features(records: pd.DataFrame) -> pd.DataFrame:
     """LiRA features of the forum shadow models: IN and OUT means and variances of each token.
 
     online: the log-likelihood ratio of two Gaussians (IN and OUT) for each token, with one variance of the record.
@@ -100,6 +100,7 @@ def forum_shadow_features(records: pd.DataFrame, splits=range(4)) -> pd.DataFram
     """
     from .attacks import find_folder, find_passes, load_pass
     folder = find_folder("fshadow_s0_h0_text.npz")
+    splits = sorted(int(f.stem.split("_s")[1]) for f in folder.glob("forum_halves_s*.csv"))
     ids, models = None, {}
     for s in splits:
         for h in (0, 1):
@@ -291,3 +292,15 @@ V2 = {
 
 def explore_v2(out_dir: str) -> None:
     explore(out_dir, V2, extra=(token_features, forum_shadow_features, recall_features))
+
+
+def feature_smoke(out_dir: str) -> None:
+    """Check the feature functions of the forum shadow models and ReCaLL on the outputs of the smoke jobs."""
+    from .photographer import load_data
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    data = load_data()
+    for fn in (forum_shadow_features, recall_features):
+        table = fn(data).dropna(how="all")
+        print(fn.__name__, len(table), "\n", table.describe().round(3).to_string(), flush=True)
+        table.describe().round(3).to_csv(out / f"{fn.__name__}.csv")
