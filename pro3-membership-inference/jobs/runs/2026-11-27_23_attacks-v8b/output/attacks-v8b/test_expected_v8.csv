@@ -1,0 +1,15 @@
+source_type,group,records,expected_members
+forum post,single,1270,176.0
+photographer,full,112,2.7
+photographer,other,560,58.0
+photographer,victim,168,67.7
+podcast,full,48,0.0
+podcast,other,208,43.4
+podcast,victim,64,62.0
+research group,full,112,0.0
+research group,other,560,107.2
+research group,victim,168,159.2
+web photo,single,890,188.7
+writer,full,112,0.2
+writer,other,560,100.8
+writer,victim,168,139.5

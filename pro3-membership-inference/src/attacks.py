@@ -855,6 +855,9 @@ def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | Non
     print(expected.round(1).to_string(), flush=True)
     known = data.loc[known_index].assign(member=lambda d: d["member"].astype(int))
     sample_w = pd.Series(test_like_weights(known, expected, data.loc[test, "source_type"].value_counts()), index=known_index)
+    # In test, a victim has only members (job attacks-v10). Thus the test-like check drops the known non-members of victims.
+    like = known[~((known["group"] == "victim") & (known["member"] == 0))]
+    like_w = pd.Series(test_like_weights(like, expected, data.loc[test, "source_type"].value_counts()), index=like.index)
     rows = []
     for seed in range(5):
         fold = make_folds(known, 2, seed)
@@ -871,6 +874,9 @@ def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | Non
             s, y, w = sim[ev].to_numpy(), known.loc[ev, "member"].to_numpy(), sample_w[ev].to_numpy()
             tpr, threshold = weighted_tpr_at_5fpr(s, y, w)
             row = {"seed": seed, "fold": f, "all": tpr}
+            keep = like_w.index.intersection(ev)
+            row["all, test-like"] = weighted_tpr_at_5fpr(sim[keep].to_numpy(), known.loc[keep, "member"].to_numpy(),
+                                                         like_w[keep].to_numpy())[0]
             types = known.loc[ev, "source_type"].to_numpy()
             for t in np.unique(types):
                 sel = types == t
