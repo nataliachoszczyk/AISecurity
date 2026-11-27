@@ -169,3 +169,46 @@ Limits of the check:
 - Job `attacks-v10`: on test, the mixture of the text set types is almost exact (r = 0.99 to 1.00, eps = 0). The global simulation on known gives 0.812 (std 0.015).
 - The expected metric from the calibrated test scores is 0.885. For attacks-v8a the same estimate is 0.804, and the public score is 0.774. Thus the estimate is approximately 0.03 too high.
 - Now the set types are almost exact. Forum posts and web photos use most of the false positive budget, so they are the next targets.
+## 2026-11-27 (branch `pro3-webphoto`, module for the web photos)
+
+Research summary for the web photos. A web photo is one image with a short caption (approximately 24 tokens). S3 used each member one time.
+
+- Li et al. 2024 (VL-MIA, arXiv:2411.02902): MaxRényi-K%, a target-free entropy of the logits on the image positions and on the text positions. AUC 0.70 to 0.80 on VL-MIA, but these sets have a shift of the data.
+- Revisiting Data Auditing in LVLMs (arXiv:2504.18349): a blind image classifier gets AUC 0.99 on VL-MIA/Flickr. On sets without a shift, all logit attacks give AUC 0.45 to 0.57. Probes on the hidden states give up to 0.65.
+- OpenLVLM-MIA (arXiv:2510.16295): a controlled benchmark of the stages of LLaVA. All attacks give AUC 0.41 to 0.53 and TPR@5%FPR below 0.08.
+- Newer black-box attacks (CSA-MIA arXiv:2605.17341, DistractMIA arXiv:2605.12574) use the generated text and an image-text encoder. Our access to the logits is stronger, so these attacks add little.
+- Conclusion: a single caption exposure gives a weak signal. Our AUC 0.61 is already above most results on sets without a shift.
+
+Ideas, from the high expected value and low cost to the low value and high cost:
+
+1. Blind check (CPU): the caption words, the account name and the image file. A shift of the data gives a strong signal, as in the papers above.
+2. Calibration (CPU): fewer features and a stronger regularization. If the signal stays weak, the correct output is a low log-odds near the prior, so that the web photos do not hurt the shared threshold.
+3. z-scores of the features against the known non-members inside bins of the caption length (the idea of the best team for the photos).
+4. Duplicate captions (CPU): the member of a group with the same caption has a higher log p than the other photos of the group.
+5. Caption ranking (GPU): the log p of the caption with its own photo against the log p with 31 other photos. This gives a z-score of the own photo with a small noise, and a rank of the own caption for the photo.
+6. Target-free entropy (MaxRényi) on the image positions and on the caption positions (GPU, in the same pass).
+7. A linear probe on the hidden states of the image tokens and of the caption tokens (GPU pass, CPU fit). The papers show a small gain.
+
+New file: `src/webphoto.py`. It has all code of the web photo module, so that the shared files do not change.
+
+- Job `webphoto-v1` (CPU): ideas 1 to 4 on the passes of the earlier jobs.
+- Job `webphoto-v1` is complete. Results inside the web photos (TPR@5%FPR, mean and std over 2 folds x 5 seeds):
+  - The v8a features give 0.127 (0.028), AUC 0.621. Their log loss is 0.509, and the prior alone gives 0.514. Thus the log-odds are almost not better than the prior.
+  - A stronger regularization (C = 0.01) gives 0.147 (0.028), AUC 0.628, log loss 0.497. The gain is smaller than the std, but the calibration is better.
+  - Small feature sets, z-scores in bins of the caption length, the duplicate captions and the length give no gain.
+  - A fit together with the photographers gives 0.150 (0.041), but a worse log loss (0.529), because the photographers have fewer members.
+  - The blind scores (image file, caption words, account name) give AUC 0.48 to 0.52. Thus the data has no shift, as in a controlled benchmark.
+  - `img_gain` (own photo against a swapped photo) has AUC 0.48: the members depend less on their photo than the non-members.
+- Added `run_matrix` to `src/webphoto.py` (ideas 5 and 6). Each photo goes into a random group of 32 photos of its type. The pass scores each caption of the group with each photo of the group. It also scores the own caption with the flipped photo. For the own pair, it keeps the Renyi entropies and the mean hidden states (layers 14 and 28, image tokens and caption tokens).
+- Job `webphoto-matrix-smoke` (40 photos of each type): complete, no error.
+- Added `run_grad`: the gradient norms of the caption loss of the own pair for the connector, the embeddings, each LLM layer and the image tokens. Job `webphoto-grad-smoke` tests it.
+- Merged `pro3-experiments` into `pro3-webphoto` for the simulation of the global metric (`explore_v9`). Added `global_sim`: it puts the web photo log-odds of a variant in place of the v8a log-odds, and keeps the rest of v8a.
+- Jobs `webphoto-matrix` (43 minutes) and `webphoto-grad` (13 minutes) are complete for all photos.
+- Job `webphoto-v2` results inside the web photos (TPR@5%FPR, mean and std):
+  - The rank features (own photo against 31 other photos, own caption against 31 other captions), the flipped photo and the Renyi entropies give no gain. Each alone has an AUC of 0.49 to 0.56.
+  - The probes on the hidden states give AUC 0.51 to 0.55 alone and no gain in the stack. This agrees with the papers above.
+  - The gradient norms have AUC 0.57 alone (members have a smaller gradient), but they follow the loss. Base + gradients with C = 0.01 gives 0.144 (0.016), AUC 0.637.
+  - Global simulation (owner prior w = 0 / w = 1): v8a 0.741 / 0.756, base with C = 0.01 0.753 / 0.761. The web photo false positives at the global threshold fall from 27.3 to 15.9 (w = 1). Thus the calibration of the web photo log-odds is the main gain.
+- Job `webphoto-v3` (CPU): the final choice of C and of the features, with the paired gain over v8a in the simulation.
+- Job `webphoto-v3` is complete. A stronger or a weaker regularization, the gradient norms and the small feature sets give no gain larger than the std. In the global simulation, base C = 0.01 has the best paired gain over v8a: +0.012 (0.009) at w = 0 and +0.005 (0.007) at w = 1.
+- Final choice for the web photos: the v8a photo features, one logistic regression with C = 0.01 (`logodds_all(photo_data(records), lr_score(BASE, 0.01))`). It needs only the passes of the earlier jobs. The log-odds of all web photos are in the output `webphoto-v3/logodds_baseC0.01.csv` of the kernel `jankombajn/bumas-p3-webphoto-v3`.
