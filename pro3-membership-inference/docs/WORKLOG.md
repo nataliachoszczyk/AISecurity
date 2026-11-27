@@ -196,3 +196,9 @@ Ideas, ranked by the expected value and the cost:
 - Added `src/forum.py`, the one code file of the forum module. It uses `train` and `shadow_halves` of `src/refmodel.py` and changes no shared file.
 - Added the job `2026-11-27_54_qwen-copy` (CPU). It downloads Qwen3-0.6B-Base with the revision of job 05 into an output of the account `nataliachoszczyk`, because the GPU jobs of this account cannot read the kernels of `jeronimoo`.
 - Added the job `2026-11-27_55_forum-shadow-smoke` (GPU T4 x2): `run_forum_shadow` on 40 forum posts and 10 other texts, then a score of 20 forum posts.
+- Added to `src/forum.py` the length and difficulty features of the forum posts (`token_features`):
+  - the sum and the t statistic of the token gain over the OUT shadow model and over Qwen3-0.6B-Base,
+  - the log of the length and the mean log p of the OUT model (the difficulty),
+  - the mean gain on hard and on easy tokens.
+- Added the forum CV with the baseline folds (`forum_cv`) and the log-odds file of the forum posts (`forum_logodds`).
+- Added the job `2026-11-27_56_forum-v1` (CPU): v6, v6 with C 0.1, v6 with the length features, both changes together.
