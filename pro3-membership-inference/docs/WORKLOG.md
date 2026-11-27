@@ -304,3 +304,4 @@ Ideas, ranked by the expected value and the cost:
 - Added the job `2026-11-27_65_forum-v4` (CPU). It waits for `forum-shadow-b`. Variants: the forum model with 8 splits, with 4 splits, with the offline z-score of each token, with all forum shadow features. Then the global simulation with the forum file.
 - Added `forum_module(out_dir, shadow_names)` to `src/forum.py`: the final forum model (v6, the three strong forum shadow features, the length features), its CV and the file `id,logodds`.
 - Removed the dead code from `src/forum.py`: ReCaLL, the feature smoke check and the variants of the jobs `forum-v1` to `forum-v3`. These jobs ran the commits before this change.
+- Job `forum-shadow-b` is complete in 2 hours 30 minutes, no error. Started the job `forum-v4`.
