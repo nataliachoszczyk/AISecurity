@@ -367,3 +367,34 @@ def explore_v4(out_dir: str) -> None:
     explore(out_dir, V4, extra=(token_features, forum_shadow_features, four))
     explore_v10(f"{out_dir}/global-forum", ("shadow",), single_files={FORUM: f"{out_dir}/submission_forum_logodds.csv"},
                 single_C={"web photo": 0.01})
+
+
+FINAL_EXTRA = (token_features, forum_shadow_features)
+
+
+def final_columns(base: list[str]) -> list[str]:
+    """The forum model: the v6 columns, the three strong forum shadow features and the length features (job forum-v3)."""
+    return base + STRONG + LENGTH
+
+
+def forum_module(out_dir: str, shadow_names=("shadow",)) -> pd.DataFrame:
+    """The final forum module: calibrated log-odds of all forum posts (id, split, logodds) and its CV.
+
+    It needs the passes of attacks.py, the shadow pairs of shadow_names and the outputs of the jobs forum-shadow and
+    forum-shadow-b (account nataliachoszczyk). Known: out of fold (folds of seed 0). Test: fit on all known.
+    """
+    from .attacks import v6_columns_of
+    from .photographer import baseline_folds, summary
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    data = load_forum_data(shadow_names, FINAL_EXTRA)
+    cols = final_columns(v6_columns_of(FORUM))
+    known = data[(data["source_type"] == FORUM) & (data["split"] == "known")].copy()
+    known["member"] = known["member"].astype(int)
+    cv = summary(forum_cv(known, cols, {seed: baseline_folds(data, seed) for seed in range(5)}).assign(variant="forum module"))
+    cv.to_csv(out / "cv.csv", index=False)
+    print(cv.to_string(), flush=True)
+    result = forum_logodds(data, cols).merge(data[["id", "split"]], on="id")[["id", "split", "logodds"]]
+    assert len(result) == (data["source_type"] == FORUM).sum() and np.isfinite(result["logodds"]).all()
+    result[["id", "logodds"]].to_csv(out / "submission_forum_logodds.csv", index=False)
+    return result

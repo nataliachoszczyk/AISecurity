@@ -302,3 +302,4 @@ Ideas, ranked by the expected value and the cost:
   - Global simulation of `explore_v10` (shadow pair `shadow`, web photo C 0.01), without and with the forum file: all 0.808 (0.012) and 0.816 (0.012). Test-like 0.866 (0.009) and 0.870 (0.009). Forum TPR at the global threshold 0.785 (0.066) and 0.828 (0.039).
 - Added to `forum_shadow_features` the offline z-score with a variance for each token (`f_offline_tok`) and a suffix for the column names.
 - Added the job `2026-11-27_65_forum-v4` (CPU). It waits for `forum-shadow-b`. Variants: the forum model with 8 splits, with 4 splits, with the offline z-score of each token, with all forum shadow features. Then the global simulation with the forum file.
+- Added `forum_module(out_dir, shadow_names)` to `src/forum.py`: the final forum model (v6, the three strong forum shadow features, the length features), its CV and the file `id,logodds`.
