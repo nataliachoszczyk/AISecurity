@@ -1,0 +1,14 @@
+,mean,std
+all,0.812,0.015
+tpr forum post,0.765,0.062
+fp forum post,13.34,5.022
+tpr photographer,0.978,0.034
+fp photographer,46.464,5.884
+tpr podcast,0.981,0.042
+fp podcast,1.68,0.736
+tpr research group,0.986,0.015
+fp research group,2.552,1.601
+tpr web photo,0.071,0.036
+fp web photo,8.694,5.526
+tpr writer,0.939,0.043
+fp writer,18.985,8.131

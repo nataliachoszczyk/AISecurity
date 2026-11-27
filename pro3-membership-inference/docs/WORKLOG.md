@@ -164,3 +164,8 @@ Limits of the check:
   - Global simulation with the weights of attacks-v8a: 0.767 (0.014) against 0.756 (0.019). With the expected members of the mixture for all set types: 0.807 (0.015) against 0.753 (0.020).
   - Test: 277.3 expected photographer members, 292 records with a log-odds above 0. The structure of the text types gives 280.
 - The output `submission_photographer_logodds.csv` of the kernel `nataliachoszczyk/bumas-p3-photographer-v4` has `id,logodds` for all 1440 photographer records (600 known out of fold, 840 test). Git ignores it, because the repository is public.
+- Merged the branch `pro3-photographer` into `pro3-experiments`. The photographer module (`src/photographer.py`) is an owner mixture: each owner is a victim or clean, and EM on the test records estimates the probability.
+- Added `explore_v10` to `src/attacks.py`: the owner mixture for all set types, the record score for forum posts and web photos.
+- Job `attacks-v10`: on test, the mixture of the text set types is almost exact (r = 0.99 to 1.00, eps = 0). The global simulation on known gives 0.812 (std 0.015).
+- The expected metric from the calibrated test scores is 0.885. For attacks-v8a the same estimate is 0.804, and the public score is 0.774. Thus the estimate is approximately 0.03 too high.
+- Now the set types are almost exact. Forum posts and web photos use most of the false positive budget, so they are the next targets.
