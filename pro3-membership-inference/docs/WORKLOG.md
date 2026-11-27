@@ -212,3 +212,11 @@ New file: `src/webphoto.py`. It has all code of the web photo module, so that th
 - Job `webphoto-v3` (CPU): the final choice of C and of the features, with the paired gain over v8a in the simulation.
 - Job `webphoto-v3` is complete. A stronger or a weaker regularization, the gradient norms and the small feature sets give no gain larger than the std. In the global simulation, base C = 0.01 has the best paired gain over v8a: +0.012 (0.009) at w = 0 and +0.005 (0.007) at w = 1.
 - Final choice for the web photos: the v8a photo features, one logistic regression with C = 0.01 (`logodds_all(photo_data(records), lr_score(BASE, 0.01))`). It needs only the passes of the earlier jobs. The log-odds of all web photos are in the output `webphoto-v3/logodds_baseC0.01.csv` of the kernel `jankombajn/bumas-p3-webphoto-v3`.
+
+## 2026-11-27 (coordinator, branch `pro3-experiments`, after the modules)
+
+- Job `shadow-b` is complete. Job `attacks-v8b` uses both shadow pairs: forum posts 0.855 (std 0.023, v8a: 0.843), all known 0.643.
+- Merged the branch `pro3-webphoto`. The web photo module keeps the v8a features with C = 0.01. No new feature gives a gain larger than the std.
+- Job `attacks-v10b`: both shadow pairs, the owner mixture for all set types, C = 0.01 for web photos. Global simulation: 0.813 (std 0.015).
+- Added a test-like simulation: it drops the known non-members of victims, because in test a victim has only members.
+- Job `attacks-v10c`: the test-like simulation gives 0.867 (std 0.018). This is the current best estimate of the test metric.
