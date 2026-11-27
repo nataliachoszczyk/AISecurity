@@ -320,3 +320,6 @@ Ideas, ranked by the expected value and the cost:
   - Global simulation of `explore_v10` (shadow pair `shadow`, web photo C 0.01) with the forum file: all 0.819 (0.015), test-like 0.869 (0.009). Forum TPR at the global threshold 0.832 (0.046), forum false positives 13.9 (4.8). Without the file: 0.808, 0.866 and 0.785.
   - Expected forum members in test: 182.1.
 - The output `submission_forum_logodds.csv` of the kernel `nataliachoszczyk/bumas-p3-forum-final` has `id,logodds` for all 3000 forum posts (1730 known out of fold, 1270 test). Git ignores it.
+- Merged the branch `pro3-forum`. The forum module (`src/forum.py`) adds 8 cheap forum shadow models (offline LiRA) and length features: forum CV 0.871 (std 0.020, v6: 0.843).
+- Made the submission file `submissions/attacks-v11.csv` (not in git): the scores of attacks-v10b with the forum test records replaced by the log-odds of the job forum-final. Both scores use the known prior of the source type, so the merge needs no new calibration.
+- The expected metric from the calibrated test scores is 0.877 (attacks-v8a: 0.804, public 0.774). Added the row of attacks-v11 to `docs/RESULTS.md`. The test score is not available yet.
