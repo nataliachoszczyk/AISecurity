@@ -312,3 +312,13 @@ def explore_v2a(out_dir: str) -> None:
     """The variants of forum-v2 without the forum shadow models (their job runs longer)."""
     variants = {k: v for k, v in V2.items() if "forum shadow" not in k}
     explore(out_dir, variants, extra=(token_features, recall_features))
+
+
+def load_forum_data(shadow_names=("shadow",), extra=()) -> pd.DataFrame:
+    """All records with the features of attacks.py (v6 with the given shadow pairs) and the extra feature functions."""
+    from .attacks import all_features, find_passes, owner_groups, v6_features
+    records = load_records(find_root())
+    data = pd.concat([records, all_features(find_passes(), records), v6_features(records, shadow_names)], axis=1)
+    data["group"] = owner_groups(data)
+    data = data.drop(columns=["text", "caption", "title", "content", "image"], errors="ignore")
+    return pd.concat([data] + [fn(data) for fn in extra], axis=1)

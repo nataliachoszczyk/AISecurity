@@ -224,3 +224,5 @@ Ideas, ranked by the expected value and the cost:
   - v6 + length: 0.856 (0.024); +0.013 (0.011).
   - The ReCaLL features have no signal alone (AUC 0.46 to 0.52). The members and the non-members come from the same distribution, as in MIMIR. Thus ReCaLL is removed.
   - The gain of the length features is approximately one std of the paired difference. They stay a candidate.
+- Job `forum-shadow` is complete in 2 hours 35 minutes, no error. All 8 models scored the 3000 forum posts.
+- Added the job `2026-11-27_62_forum-v2` (CPU): all variants of `V2`, with the forum shadow features.
