@@ -293,3 +293,10 @@ Ideas, ranked by the expected value and the cost:
   - only the three strong forum shadow features (`f_gain`, `f_gain_t`, `f_offline`),
   - a compact model: 5 v6 features, the forum shadow and the length features,
   - the global simulation of `explore_v10` (shadow pair `shadow`, web photo C 0.01) without and with the forum file.
+- Job `forum-v3` is complete in 2 minutes. TPR@5%FPR (mean, std; paired difference against the first variant):
+  - v6 + forum shadow + length: 0.872 (0.019).
+  - The same with C 0.1: 0.870 (0.023); -0.001 (0.008).
+  - v6 + the three strong forum shadow features + length: 0.871 (0.020); -0.001 (0.004).
+  - Compact (5 v6 features + forum shadow + length): 0.872 (0.027); +0.001 (0.014).
+  - Thus all variants are equal. The simplest one (v6 + the three strong forum shadow features + length) becomes the forum model.
+  - Global simulation of `explore_v10` (shadow pair `shadow`, web photo C 0.01), without and with the forum file: all 0.808 (0.012) and 0.816 (0.012). Test-like 0.866 (0.009) and 0.870 (0.009). Forum TPR at the global threshold 0.785 (0.066) and 0.828 (0.039).
