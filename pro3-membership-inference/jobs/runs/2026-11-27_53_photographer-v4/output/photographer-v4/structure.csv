@@ -1,0 +1,5 @@
+source_type,r,eps,q_victim,q_full,q_other,expected members,other owners above 0.5,other owners 0.05 to 0.95
+writer,1.0,0.0,1.0,0.0,0.2,279.981,8,0
+research group,0.995,0.0,1.0,0.0,0.2,278.548,8,0
+podcast,0.991,0.0,1.0,0.0,0.231,110.969,6,0
+photographer,0.95,0.0,1.0,0.0,0.221,277.315,9,2

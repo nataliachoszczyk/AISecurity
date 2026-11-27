@@ -1,0 +1,25 @@
+variant,TPR@5%FPR mean,TPR@5%FPR std,AUC mean,AUC std,scenario
+record,0.722,0.018,0.937,0.005,base
+group prior,0.862,0.035,0.973,0.005,base
+mixture,1.0,0.0,0.999,0.002,base
+owner prior shift w=1,0.867,0.026,0.979,0.003,base
+record,0.662,0.019,0.927,0.005,victim 75%
+group prior,0.772,0.037,0.955,0.005,victim 75%
+mixture,0.927,0.041,0.979,0.004,victim 75%
+owner prior shift w=1,0.757,0.029,0.963,0.003,victim 75%
+record,0.722,0.018,0.937,0.005,clean 4%
+group prior,0.795,0.04,0.938,0.015,clean 4%
+mixture,0.776,0.041,0.965,0.006,clean 4%
+owner prior shift w=1,0.775,0.036,0.962,0.004,clean 4%
+record,0.722,0.018,0.937,0.005,hidden 3
+group prior,0.934,0.028,0.987,0.004,hidden 3
+mixture,1.0,0.0,0.999,0.001,hidden 3
+owner prior shift w=1,0.867,0.026,0.979,0.003,hidden 3
+record,0.722,0.018,0.937,0.005,hidden 12
+group prior,0.731,0.021,0.948,0.003,hidden 12
+mixture,1.0,0.0,0.997,0.0,hidden 12
+owner prior shift w=1,0.867,0.026,0.979,0.003,hidden 12
+record,0.677,0.021,0.929,0.006,all wrong
+group prior,0.766,0.036,0.929,0.014,all wrong
+mixture,0.718,0.041,0.944,0.006,all wrong
+owner prior shift w=1,0.691,0.036,0.947,0.004,all wrong
