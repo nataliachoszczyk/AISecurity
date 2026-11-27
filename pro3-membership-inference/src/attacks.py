@@ -814,3 +814,63 @@ def explore_v9(out_dir: str, shadow_names=("shadow",), weights=(0.0, 0.5, 1.0)) 
     for w in weights:
         score = owner_prior_shift(data, full, "test", w)
         pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / f"submission_v9_w{w}.csv", index=False)
+
+
+def explore_v10(out_dir: str, shadow_names=("shadow",), single_files: dict | None = None) -> None:
+    """The merged score: the owner mixture (src/photographer.py) for all set types, the record score for the single types.
+
+    single_files can replace the log-odds of a single type with a file (columns id, logodds) of a module.
+    The global simulation on known uses the expected test members of the merged score as the weights.
+    """
+    from .data import find_root, load_records
+    from .photographer import known_mixture, set_logodds
+    from .validation import make_folds
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    pd.set_option("display.width", 200)
+    records = load_records(find_root())
+    data = pd.concat([records, all_features(find_passes(), records), v6_features(records, shadow_names)], axis=1)
+    data["group"] = owner_groups(data)
+    known_index = data.index[data["split"] == "known"]
+    test = data["split"] == "test"
+    score = record_logodds(data, known_index, v6_columns_of)
+    for source_type in SET_TYPES:
+        part = set_logodds(data, source_type).set_index("id")["logodds"]
+        sel = data["source_type"] == source_type
+        score[sel] = data.loc[sel, "id"].map(part)
+    singles = {t: pd.read_csv(f).set_index("id")["logodds"] for t, f in (single_files or {}).items()}
+    for source_type, values in singles.items():
+        sel = test & (data["source_type"] == source_type)
+        score[sel] = data.loc[sel, "id"].map(values)
+    assert score[test].notna().all()
+    expected = (1 / (1 + np.exp(-score[test]))).groupby(data.loc[test, "source_type"]).sum()
+    print(expected.round(1).to_string(), flush=True)
+    known = data.loc[known_index].assign(member=lambda d: d["member"].astype(int))
+    sample_w = pd.Series(test_like_weights(known, expected, data.loc[test, "source_type"].value_counts()), index=known_index)
+    rows = []
+    for seed in range(5):
+        fold = make_folds(known, 2, seed)
+        for f in range(2):
+            fit_index, ev = known_index[fold != f], known_index[fold == f]
+            sim = record_logodds(data, fit_index, v6_columns_of)
+            for source_type in SET_TYPES:
+                mixed = known_mixture(data, fit_index, ev, source_type)
+                sim[mixed.index] = mixed
+            for source_type, values in singles.items():
+                # A module file has out-of-fold log-odds for the known records.
+                sel = data.index.isin(ev) & (data["source_type"] == source_type)
+                sim[sel] = data.loc[sel, "id"].map(values)
+            s, y, w = sim[ev].to_numpy(), known.loc[ev, "member"].to_numpy(), sample_w[ev].to_numpy()
+            tpr, threshold = weighted_tpr_at_5fpr(s, y, w)
+            row = {"seed": seed, "fold": f, "all": tpr}
+            types = known.loc[ev, "source_type"].to_numpy()
+            for t in np.unique(types):
+                sel = types == t
+                row[f"tpr {t}"] = (s[sel & (y == 1)] >= threshold).mean()
+                row[f"fp {t}"] = (w[sel & (y == 0)] * (s[sel & (y == 0)] >= threshold)).sum()
+            rows.append(row)
+    table = pd.DataFrame(rows).drop(columns=["seed", "fold"]).agg(["mean", "std"]).T.round(3)
+    table.to_csv(out / "sim_v10.csv")
+    expected.round(1).to_csv(out / "expected_v10.csv")
+    print(table.to_string(), flush=True)
+    pd.DataFrame({"id": data.loc[test, "id"], "score": score[test]}).to_csv(out / "submission_v10.csv", index=False)
