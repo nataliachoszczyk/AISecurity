@@ -560,10 +560,47 @@ def global_sim(data: pd.DataFrame, web: pd.DataFrame, web_fns: dict, owner_w=(0.
                     score = owner_prior_shift(data, score_all, "known", w).loc[ev].to_numpy()
                     tpr, threshold = weighted_tpr_at_5fpr(score, labels, sw)
                     sel = types == WEB
-                    rows.append({"variant": name, "w": w, "all": tpr,
+                    rows.append({"variant": name, "w": w, "seed": seed, "fold": f, "all": tpr,
                                  "tpr web": (score[sel & (labels == 1)] >= threshold).mean(),
                                  "fp web": (sw[sel & (labels == 0)] * (score[sel & (labels == 0)] >= threshold)).sum(),
                                  "fp all": (sw[labels == 0] * (score[labels == 0] >= threshold)).sum()})
-    table = pd.DataFrame(rows).groupby(["variant", "w"], sort=False).agg(["mean", "std"]).round(3)
+    rows = pd.DataFrame(rows)
+    # The variants share the folds, so the paired gain over v8a has a smaller noise than the std of each variant.
+    base = rows[rows["variant"] == "v8a"].set_index(["w", "seed", "fold"])["all"]
+    rows["gain"] = rows["all"].to_numpy() - base.loc[list(zip(rows["w"], rows["seed"], rows["fold"]))].to_numpy()
+    table = rows.drop(columns=["seed", "fold"]).groupby(["variant", "w"], sort=False).agg(["mean", "std"]).round(3)
     table.columns = [f"{a} {b}" for a, b in table.columns]
     return table.reset_index()
+
+
+SMALL = ["loss", "ref_img", "dom_own", "dom_own_low20", "lira_own_gain", "plira_gain"]
+
+
+def explore_v3(out_dir: str) -> None:
+    """The choice of the final web photo score: regularization and feature sets, judged on the CV and on the global simulation.
+
+    The output has the calibrated log-odds of all web photo records for the main variants.
+    """
+    from .data import find_root, load_records
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    pd.set_option("display.width", 250)
+    data, photos, _ = module_data(load_records(find_root()))
+    web = photos[photos["source_type"] == WEB]
+    known = web[web["split"] == "known"].assign(member=lambda d: d["member"].astype(int))
+    grad_cols = [c for c in photos.columns if c.startswith("log_grad")]
+    variants = {"prior": prior_score}
+    for C in (0.001, 0.003, 0.01, 0.03):
+        variants[f"base C={C}"] = lr_score(BASE, C)
+        variants[f"base + grad C={C}"] = lr_score(BASE + grad_cols, C)
+    for C in (0.01, 0.1, 1.0):
+        variants[f"small C={C}"] = lr_score(SMALL, C)
+    variants["dom_own C=1"] = lr_score(["dom_own"])
+    table = run_cv(known, variants)
+    table.to_csv(out / "cv.csv", index=False)
+    sim = global_sim(data, web, {k: v for k, v in variants.items() if k != "prior"})
+    sim.to_csv(out / "sim.csv", index=False)
+    print(sim.to_string(), flush=True)
+    for name in ("base C=0.01", "base + grad C=0.01", "small C=0.1"):
+        logodds_all(photos, variants[name]).to_csv(out / f"logodds_{name.replace(' ', '').replace('=', '').replace('+', '_')}.csv",
+                                                   index=False)

@@ -84,3 +84,10 @@ New file: `src/webphoto.py`. It has all code of the web photo module, so that th
 - Job `webphoto-matrix-smoke` (40 photos of each type): complete, no error.
 - Added `run_grad`: the gradient norms of the caption loss of the own pair for the connector, the embeddings, each LLM layer and the image tokens. Job `webphoto-grad-smoke` tests it.
 - Merged `pro3-experiments` into `pro3-webphoto` for the simulation of the global metric (`explore_v9`). Added `global_sim`: it puts the web photo log-odds of a variant in place of the v8a log-odds, and keeps the rest of v8a.
+- Jobs `webphoto-matrix` (43 minutes) and `webphoto-grad` (13 minutes) are complete for all photos.
+- Job `webphoto-v2` results inside the web photos (TPR@5%FPR, mean and std):
+  - The rank features (own photo against 31 other photos, own caption against 31 other captions), the flipped photo and the Renyi entropies give no gain. Each alone has an AUC of 0.49 to 0.56.
+  - The probes on the hidden states give AUC 0.51 to 0.55 alone and no gain in the stack. This agrees with the papers above.
+  - The gradient norms have AUC 0.57 alone (members have a smaller gradient), but they follow the loss. Base + gradients with C = 0.01 gives 0.144 (0.016), AUC 0.637.
+  - Global simulation (owner prior w = 0 / w = 1): v8a 0.741 / 0.756, base with C = 0.01 0.753 / 0.761. The web photo false positives at the global threshold fall from 27.3 to 15.9 (w = 1). Thus the calibration of the web photo log-odds is the main gain.
+- Job `webphoto-v3` (CPU): the final choice of C and of the features, with the paired gain over v8a in the simulation.
