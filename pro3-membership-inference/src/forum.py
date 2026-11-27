@@ -325,3 +325,21 @@ def load_forum_data(shadow_names=("shadow",), extra=()) -> pd.DataFrame:
     data["group"] = owner_groups(data)
     data = data.drop(columns=["text", "caption", "title", "content", "image"], errors="ignore")
     return pd.concat([data] + [fn(data) for fn in extra], axis=1)
+
+
+# Variants of the job forum-v3: the best model of forum-v2 first, then one change each.
+STRONG = ["f_gain", "f_gain_t", "f_offline"]
+V3 = {
+    "v6 + forum shadow + length": (lambda base: base + FSHADOW + LENGTH, 1.0),
+    "v6 + forum shadow + length C=0.1": (lambda base: base + FSHADOW + LENGTH, 0.1),
+    "v6 + strong forum shadow + length": (lambda base: base + STRONG + LENGTH, 1.0),
+    "compact": (lambda base: ["lira_gain", "dom", "ref", "ref_minkpp", "minkpp20"] + FSHADOW + LENGTH, 1.0),
+}
+
+
+def explore_v3(out_dir: str) -> None:
+    """The V3 variants, then the global simulation of explore_v10 without and with the forum file of the first variant."""
+    from .attacks import explore_v10
+    explore(out_dir, V3, extra=(token_features, forum_shadow_features))
+    for name, files in [("global-v6", None), ("global-forum", {FORUM: f"{out_dir}/submission_forum_logodds.csv"})]:
+        explore_v10(f"{out_dir}/{name}", ("shadow",), single_files=files, single_C={"web photo": 0.01})

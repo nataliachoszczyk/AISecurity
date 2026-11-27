@@ -287,3 +287,9 @@ Ideas, ranked by the expected value and the cost:
   - Single features: the gain over the mean of the 4 OUT forum shadow models (`f_gain`) has TPR@5%FPR 0.833 and AUC 0.948. The gain over one OUT model of the full shadow pair (`lira_gain`) has 0.739 and 0.929. The offline z-score (`f_offline`) has 0.830 and 0.950. The online LiRA ratio is weaker (0.509, AUC 0.853).
 - More OUT models make the gain feature much stronger. Thus added the job `2026-11-27_63_forum-shadow-b` (GPU T4 x2) with 4 more splits (4 to 7). With both jobs, each forum post has 8 IN and 8 OUT models.
 - Changed `forum_shadow_features`: it reads the splits of all job outputs below `/kaggle/input`, and `max_splits` can limit them.
+- Merged `origin/pro3-experiments` (the web photo module, `explore_v10` with `single_C`, the test-like global simulation).
+- Added the job `2026-11-27_64_forum-v3` (CPU), on the 4 splits of `forum-shadow`:
+  - v6 + forum shadow + length (the best model of `forum-v2`), with C 1 and C 0.1,
+  - only the three strong forum shadow features (`f_gain`, `f_gain_t`, `f_offline`),
+  - a compact model: 5 v6 features, the forum shadow and the length features,
+  - the global simulation of `explore_v10` (shadow pair `shadow`, web photo C 0.01) without and with the forum file.
