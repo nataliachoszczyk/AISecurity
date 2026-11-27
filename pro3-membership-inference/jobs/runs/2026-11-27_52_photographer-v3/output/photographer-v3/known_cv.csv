@@ -1,0 +1,9 @@
+variant,TPR@5%FPR mean,TPR@5%FPR std,AUC mean,AUC std,record
+record,0.531,0.062,0.902,0.01,v6 C=0.1
+record + known group,0.639,0.037,0.952,0.004,v6 C=0.1
+record,0.517,0.068,0.901,0.011,v6 C=0.03
+record + known group,0.656,0.04,0.952,0.004,v6 C=0.03
+record,0.497,0.088,0.896,0.015,v6 C=0.01
+record + known group,0.628,0.054,0.951,0.005,v6 C=0.01
+record,0.533,0.049,0.905,0.01,v6 no domain C=0.1
+record + known group,0.636,0.056,0.955,0.003,v6 no domain C=0.1
