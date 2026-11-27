@@ -138,3 +138,23 @@ Limits of the check:
 - Added the job `2026-11-27_52_photographer-v3` (CPU): C 0.1, 0.03 and 0.01, and v6 without the domain reference features (C 0.1).
   - The cross-fit of the domain features differs between known and test. A known record gets the model of the other fold, a test record gets the mean of the two models.
   - The job also writes the llr distributions of known and test (`llr_shift`).
+- Job `photographer-v3` is complete in 5 minutes. TPR@5%FPR (mean, std):
+
+  | Record variant | Known CV record | Known CV + group | Check: record | Check: mixture | Test: expected members |
+  |---|---|---|---|---|---|
+  | v6 C 0.1 | 0.531 (0.062) | 0.639 (0.037) | 0.722 (0.018) | 1.000 (0.000) | 277.3 |
+  | v6 C 0.03 | 0.517 (0.068) | 0.656 (0.040) | 0.708 (0.020) | 0.997 (0.016) | 292.5 |
+  | v6 C 0.01 | 0.497 (0.088) | 0.628 (0.054) | 0.689 (0.011) | 0.970 (0.040) | 297.2 |
+  | v6 without domain, C 0.1 | 0.533 (0.049) | 0.636 (0.056) | 0.692 (0.022) | 1.000 (0.000) | 272.4 |
+
+  - No variant is better than C 0.1 by more than the std. Thus the record part stays v6 with C 0.1.
+  - The llr of known and test agree: test full owners -2.47 (known full non-members -2.22), test victims 1.36 (known members 1.42). Thus no calibration shift between known and test occurs.
+  - Scenarios with C 0.1 (mixture, prior shift w 1): victims with 75% members 0.927, 0.757. Clean 4% 0.776, 0.775. Hidden 3 1.000, 0.867. Hidden 12 1.000, 0.867. All wrong 0.718, 0.691.
+  - Global simulation with C 0.1: 0.767 (std 0.014) against 0.756 (0.019). Photographer TPR at the global threshold 0.981 against 0.647.
+- The coordinator accepted the mixture as the owner part of the photographers.
+- Froze `src/photographer.py`:
+  - The main function is `set_logodds(data, source_type)`. It works for all set types: C 0.1 for photographers, C 1 for the other types.
+  - Removed the dead variants: tau, the owner mean, the record variants and the llr shift.
+  - The honest check compares four variants: record, group prior, mixture, prior shift w 1.
+  - The global simulation also runs with the expected test members of the mixture for all set types, not only with the members of attacks-v8a.
+- Added the job `2026-11-27_53_photographer-v4` (CPU). It writes `submission_photographer_logodds.csv` (`id,logodds`, all 1440 photographer records) to the output.

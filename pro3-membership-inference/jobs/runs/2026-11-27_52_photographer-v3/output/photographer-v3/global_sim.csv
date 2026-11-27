@@ -1,0 +1,3 @@
+variant,all mean,all std,tpr photographer mean,tpr photographer std,fp photographer mean,fp photographer std,fp other types mean,fp other types std
+owner prior shift w=1,0.756,0.019,0.647,0.044,30.16,2.853,66.832,2.873
+photographer mixture,0.767,0.014,0.981,0.035,59.377,6.701,37.561,6.648
