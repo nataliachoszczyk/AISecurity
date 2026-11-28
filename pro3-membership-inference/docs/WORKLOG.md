@@ -20,3 +20,20 @@
 - Added `src/validation.py`: 2 folds that copy the relation between known and test (split inside each set owner), 5 seeds, the server metric for each fold.
 - Added the job `2026-11-26_03_eda-notebook` (CPU). It runs the notebook on Kaggle.
 - Job `eda-notebook` is complete. `notebooks/01_eda.ipynb` has all results and the conclusions.
+
+## 2026-11-28
+
+- Made the branch `pro3-experiments-final` from `pro3`. It has only the code and the jobs of the submission on the public leaderboard: attacks-v8a (public score 0.774).
+- The branch `pro3-experiments` has the full history of the experiments. The jobs below ran on that branch.
+- Added the jobs of the submission, in the order of the run:
+  1. `2026-11-26_05_qwen-weights` (CPU): the reference model Qwen3-0.6B-Base.
+  2. `2026-11-26_08_logprobs` (GPU T4 x2): the per-token values of BUMAS-mini and Qwen3-0.6B-Base.
+  3. `2026-11-26_15_refmodel` (GPU T4 x2): the two domain reference models.
+  4. `2026-11-26_16_shadow` (GPU T4 x2): the shadow pair `shadow`.
+  5. `2026-11-27_22_attacks-v8a` (CPU): the features, the validation and `submission_v8.csv`.
+- Jobs 2 to 4 can run at the same time. Job 5 reads the outputs of jobs 2 to 4 as kernel sources.
+- Changed `BRANCH` in the `run.py` of jobs 2 to 5 to `pro3-experiments-final`.
+- Added `src/logprobs.py` without change.
+- Added `src/refmodel.py` in the version of the commit that ran the job `shadow` (without the photo shadow models).
+- Added `src/attacks.py` with only the functions of `explore_v8`. The code of the functions has no change.
+- Added `docs/RESULTS.md` with the row of attacks-v8a.
